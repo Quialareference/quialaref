@@ -56,12 +56,12 @@ export function Header() {
             >
               + Ajouter une réf
             </Link>
-            <Link
-              href="/wiki"
+            <a
+              href="https://wikiref.fr"
               className="text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full hidden sm:block whitespace-nowrap"
             >
               Parcourir
-            </Link>
+            </a>
             {session?.user ? (
               <Link
                 href="/settings"

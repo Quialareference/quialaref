@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      // Sur quialaref.fr, /wiki/* redirige vers wikiref.fr
+      {
+        source: "/wiki",
+        destination: "https://wikiref.fr",
+        permanent: false,
+        has: [{ type: "host" as const, value: "quialaref.fr" }],
+      },
+      {
+        source: "/wiki/:path*",
+        destination: "https://wikiref.fr/:path*",
+        permanent: false,
+        has: [{ type: "host" as const, value: "quialaref.fr" }],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
