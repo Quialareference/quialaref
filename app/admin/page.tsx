@@ -181,7 +181,7 @@ export default function AdminPage() {
                   {ref.question && (
                     <p className="text-white/70 text-sm mb-1">
                       <span className="text-white/40">Question : </span>
-                      {ref.question.replace("___", <span />).toString()}
+                      {ref.question.replace("___", "___")}
                       {" → "}
                       <span className="text-yellow-400 font-semibold">{ref.correctAnswer}</span>
                     </p>
