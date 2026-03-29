@@ -4,7 +4,7 @@ import { SubmitRefForm } from "@/components/submit/SubmitRefForm";
 
 export default async function SubmitPage() {
   const session = await auth();
-  if (!session?.user) redirect("/auth/signin");
+  if (!session?.user) redirect("/auth/signin?callbackUrl=https://wikiref.fr/submit");
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">

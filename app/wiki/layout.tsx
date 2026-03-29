@@ -51,6 +51,12 @@ export default async function WikiLayout({ children }: { children: React.ReactNo
 
           {/* Right */}
           <div className="flex items-center justify-end gap-2 w-44">
+            <Link
+              href="/submit"
+              className="text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full hidden sm:block whitespace-nowrap"
+            >
+              + Ajouter une réf
+            </Link>
             <a
               href="https://quialaref.fr"
               target="_blank"
