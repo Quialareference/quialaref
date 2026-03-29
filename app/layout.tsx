@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import { Providers } from "@/components/Providers";
 import { Header } from "@/components/Header";
 import "./globals.css";
@@ -19,12 +20,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const headersList = await headers();
+  const pathname = headersList.get("x-pathname") ?? "";
+  const isWiki = pathname.startsWith("/wiki");
+
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased min-h-screen`}>
         <Providers>
-          <Header />
+          {!isWiki && <Header />}
           {children}
         </Providers>
       </body>
