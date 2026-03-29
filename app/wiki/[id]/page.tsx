@@ -26,6 +26,15 @@ interface Revision {
   createdAt: string;
 }
 
+function getYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
+  } catch {}
+  return null;
+}
+
 // Minimal markdown-like renderer
 function renderContent(text: string) {
   return text
@@ -277,18 +286,22 @@ export default function WikiRefPage() {
         <aside className="lg:w-72 flex-shrink-0">
           <div className="bg-[--bg-card] border border-[--border] rounded-2xl overflow-hidden sticky top-20">
             {/* Media */}
-            <div className="relative aspect-video bg-black/40">
-              {ref.mediaType === "image" ? (
+            <div className="relative aspect-video bg-black">
+              {ref.youtubeUrl && getYoutubeId(ref.youtubeUrl) ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${getYoutubeId(ref.youtubeUrl)}`}
+                  title={ref.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 w-full h-full"
+                />
+              ) : ref.mediaType === "image" ? (
                 <Image src={ref.mediaUrl} alt={ref.title} fill className="object-contain" />
               ) : (
                 <video src={ref.mediaUrl} muted playsInline loop autoPlay className="w-full h-full object-contain" poster={ref.thumbnailUrl ?? undefined} />
               )}
             </div>
             <div className="p-4 flex flex-col gap-2 text-sm">
-              <div className="flex justify-between text-[--text-muted]">
-                <span>Type</span>
-                <span className="text-[--text] font-medium capitalize">{ref.mediaType === "image" ? "Image" : "Vidéo"}</span>
-              </div>
               <div className="flex justify-between text-[--text-muted]">
                 <span>Parties</span>
                 <span className="text-[--text] font-medium">{ref.playCount.toLocaleString("fr-FR")}</span>
@@ -300,7 +313,7 @@ export default function WikiRefPage() {
                   rel="noopener noreferrer"
                   className="mt-1 flex items-center justify-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-xl px-3 py-2 text-xs font-semibold transition-colors"
                 >
-                  ▶ Voir sur YouTube
+                  ↗ Ouvrir sur YouTube
                 </a>
               )}
             </div>
