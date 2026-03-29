@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import { Providers } from "@/components/Providers";
 import { Header } from "@/components/Header";
+import { WikiHeader } from "@/components/WikiHeader";
 import "./globals.css";
 
 const inter = Inter({
@@ -23,13 +24,16 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
-  const isWiki = pathname.startsWith("/wiki");
+  const hostname = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const isWikiDomain = hostname.includes("wikiref");
+  const isWikiPath = pathname.startsWith("/wiki");
 
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased min-h-screen`}>
         <Providers>
-          {!isWiki && <Header />}
+          {isWikiDomain && !isWikiPath && <WikiHeader />}
+          {!isWikiDomain && !isWikiPath && <Header />}
           {children}
         </Providers>
       </body>
