@@ -1,6 +1,11 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth/config";
 import { SubmitRefForm } from "@/components/submit/SubmitRefForm";
 
-export default function SubmitPage() {
+export default async function SubmitPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/auth/signin");
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <div className="mb-6">
