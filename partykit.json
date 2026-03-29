@@ -1,5 +1,8 @@
 {
   "name": "quialaref",
   "main": "party/game.ts",
-  "compatibilityDate": "2024-01-01"
+  "compatibilityDate": "2024-01-01",
+  "vars": {
+    "NEXTJS_URL": "https://quialaref.fr"
+  }
 }
