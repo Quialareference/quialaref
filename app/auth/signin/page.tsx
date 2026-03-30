@@ -30,21 +30,6 @@ export default function SignInPage() {
     setLoading(false);
   }
 
-  async function syncOtherDomain() {
-    try {
-      const res = await fetch("/api/auth/cross-domain-token");
-      if (!res.ok) return;
-      const { token } = await res.json();
-      const otherDomain = isWiki ? "https://quialaref.fr" : "https://wikiref.fr";
-      // Fire and forget — open silently as hidden iframe
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = `${otherDomain}/api/auth/cross-domain-callback?token=${token}`;
-      document.body.appendChild(iframe);
-      setTimeout(() => iframe.remove(), 5000);
-    } catch {}
-  }
-
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -54,7 +39,6 @@ export default function SignInPage() {
       setError("Email ou mot de passe incorrect.");
       setLoading(false);
     } else {
-      await syncOtherDomain();
       router.push("/");
       router.refresh();
     }
