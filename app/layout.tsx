@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
-  const hostname = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const hostname = headersList.get("x-hostname") ?? headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
   const isWikiDomain = hostname.includes("wikiref");
   const isWikiPath = pathname.startsWith("/wiki");
 

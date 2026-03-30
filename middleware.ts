@@ -10,6 +10,11 @@ export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isWikiDomain = hostname.includes("wikiref");
 
+  // Headers à injecter dans la request pour que le layout les lise
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  requestHeaders.set("x-hostname", hostname);
+
   // Sur wikiref.fr : réécrire vers /wiki/*
   if (isWikiDomain) {
     if (
@@ -23,14 +28,10 @@ export function middleware(request: NextRequest) {
       const newPath = pathname === "/" ? "/wiki" : `/wiki${pathname}`;
       const url = request.nextUrl.clone();
       url.pathname = newPath;
-      const response = NextResponse.rewrite(url);
-      response.headers.set("x-pathname", newPath);
-      return response;
+      requestHeaders.set("x-pathname", newPath);
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
     }
-    // Déjà sur /wiki, juste passer x-pathname
-    const response = NextResponse.next();
-    response.headers.set("x-pathname", pathname);
-    return response;
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   // Sur quialaref.fr : /wiki/* → redirect vers wikiref.fr
@@ -44,9 +45,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(`https://wikiref.fr/submit`);
   }
 
-  const response = NextResponse.next();
-  response.headers.set("x-pathname", pathname);
-  return response;
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
