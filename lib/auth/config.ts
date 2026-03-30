@@ -34,17 +34,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
   pages: {
     signIn: "/auth/signin",
     verifyRequest: "/auth/verify",
   },
   callbacks: {
-    async session({ session, user }) {
+    async jwt({ token, user, trigger }) {
+      // On sign-in, populate token from user
       if (user) {
-        session.user.id = user.id;
-        const [dbUser] = await db.select({ username: users.username }).from(users).where(eq(users.id, user.id)).limit(1);
-        session.user.username = dbUser?.username ?? null;
+        token.id = user.id;
+        token.email = user.email;
+      }
+      // On update or first load, fetch fresh username from DB
+      if (token.id && (trigger === "update" || !token.username)) {
+        const [dbUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, token.id as string))
+          .limit(1);
+        token.username = dbUser?.username ?? null;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.id as string;
+        session.user.username = token.username as string | null;
       }
       return session;
     },
