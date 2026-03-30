@@ -46,6 +46,22 @@ export default function SetupPage() {
     }
 
     await update();
+
+    // Sync session to other domain
+    try {
+      const tokenRes = await fetch("/api/auth/cross-domain-token");
+      if (tokenRes.ok) {
+        const { token } = await tokenRes.json();
+        const currentHost = window.location.hostname;
+        const otherDomain = currentHost.includes("wikiref") ? "https://quialaref.fr" : "https://wikiref.fr";
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = `${otherDomain}/api/auth/cross-domain-callback?token=${token}`;
+        document.body.appendChild(iframe);
+        setTimeout(() => iframe.remove(), 5000);
+      }
+    } catch {}
+
     router.push("/");
   }
 
