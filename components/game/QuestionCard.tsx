@@ -88,16 +88,29 @@ export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, 
       {/* Question sentence */}
       <div className="bg-white/5 rounded-xl px-4 py-2.5 text-center mt-1 mb-1">
         <p className="text-white font-semibold text-base leading-snug">
-          {question.question.split("___").map((part, i, arr) => (
-            <span key={i}>
-              {part}
-              {i < arr.length - 1 && (
-                isReveal
-                  ? <span className="inline-block bg-yellow-400/30 text-yellow-300 rounded px-2 mx-1 font-bold">{reveal!.correctText}</span>
-                  : <span className="inline-block bg-white/20 text-white/60 rounded px-3 mx-1 font-black">___</span>
-              )}
-            </span>
-          ))}
+          {(() => {
+            // Normalize multiple consecutive ___ (possibly with spaces) into one
+            const normalized = question.question.replace(/(___ ?)+/g, "___");
+            const lines = normalized.split("\n");
+            return lines.map((line, lineIdx) => {
+              const parts = line.split("___");
+              return (
+                <span key={lineIdx}>
+                  {lineIdx > 0 && <br />}
+                  {parts.map((part, i) => (
+                    <span key={i}>
+                      {part}
+                      {i < parts.length - 1 && (
+                        isReveal
+                          ? <span className="inline-block bg-yellow-400/30 text-yellow-300 rounded px-2 mx-1 font-bold">{reveal!.correctText}</span>
+                          : <span className="inline-block bg-white/20 text-white/60 rounded px-3 mx-1 font-black">___</span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              );
+            });
+          })()}
         </p>
       </div>
 
