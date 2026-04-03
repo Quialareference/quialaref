@@ -35,6 +35,7 @@ export interface QuestionPayload {
   };
   serverTimestamp: number;
   durationMs: number;
+  youtubeUrl?: string | null;
 }
 
 export interface RevealPayload {
@@ -58,5 +59,6 @@ export interface GameState {
   answeredCount: number;
   hostClientId: string | null;
   settings: GameSettings;
+  showVideo: boolean;
   error: string | null;
 }

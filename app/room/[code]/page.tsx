@@ -36,7 +36,7 @@ export default function RoomPage() {
 }
 
 function RoomGame({ code, clientId, pseudonym, onKicked }: { code: string; clientId: string; pseudonym: string; onKicked: () => void }) {
-  const { state, submitAnswer, startGame, updateSettings, kickPlayer, restartGame, isHost, myClientId } = useGameState({
+  const { state, submitAnswer, startGame, updateSettings, kickPlayer, restartGame, nextQuestion, playVideo, isHost, myClientId } = useGameState({
     roomCode: code,
     clientId,
     pseudonym,
@@ -94,6 +94,11 @@ function RoomGame({ code, clientId, pseudonym, onKicked }: { code: string; clien
                 totalPlayers={state.players.length}
                 onAnswer={submitAnswer}
                 reveal={state.phase === "reveal" ? state.reveal : null}
+                isHost={isHost}
+                autoChange={state.settings.autoChange}
+                showVideo={state.showVideo}
+                onNextQuestion={nextQuestion}
+                onPlayVideo={playVideo}
               />
             )}
 

@@ -16,9 +16,23 @@ interface QuestionCardProps {
   totalPlayers: number;
   onAnswer: (option: Option) => void;
   reveal: RevealPayload | null;
+  isHost: boolean;
+  autoChange: boolean;
+  showVideo: boolean;
+  onNextQuestion: () => void;
+  onPlayVideo: () => void;
 }
 
-export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, onAnswer, reveal }: QuestionCardProps) {
+function getYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
+  } catch {}
+  return null;
+}
+
+export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, onAnswer, reveal, isHost, autoChange, showVideo, onNextQuestion, onPlayVideo }: QuestionCardProps) {
   const isReveal = reveal !== null;
   const isCorrect = myAnswer !== null && myAnswer === reveal?.correctOption;
 
@@ -115,17 +129,39 @@ export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, 
       </div>
 
       {/* Media */}
-      <div className="relative rounded-xl overflow-hidden bg-black/40 shadow-xl mb-1" style={{ maxHeight: "34vh" }}>
-        {question.mediaType === "image" ? (
-          <Image
-            src={question.mediaUrl}
-            alt="Référence"
-            width={800}
-            height={400}
-            className="w-full object-contain"
-            style={{ maxHeight: "34vh" }}
-            priority
+      <div
+        className={`relative rounded-xl overflow-hidden bg-black/40 shadow-xl mb-1 ${isHost && isReveal && !autoChange && question.youtubeUrl ? "cursor-pointer ring-2 ring-white/20 hover:ring-yellow-400/60 transition-all" : ""}`}
+        style={{ maxHeight: "34vh" }}
+        onClick={() => {
+          if (isHost && isReveal && !autoChange && question.youtubeUrl) onPlayVideo();
+        }}
+      >
+        {showVideo && question.youtubeUrl && getYoutubeId(question.youtubeUrl) ? (
+          <iframe
+            src={`https://www.youtube.com/embed/${getYoutubeId(question.youtubeUrl)}?autoplay=1`}
+            title="Vidéo"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="w-full"
+            style={{ height: "34vh" }}
           />
+        ) : question.mediaType === "image" ? (
+          <>
+            <Image
+              src={question.mediaUrl}
+              alt="Référence"
+              width={800}
+              height={400}
+              className="w-full object-contain"
+              style={{ maxHeight: "34vh" }}
+              priority
+            />
+            {isHost && isReveal && !autoChange && question.youtubeUrl && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
+                <span className="text-white font-bold text-sm bg-black/60 px-3 py-1.5 rounded-full">▶ Lancer la vidéo</span>
+              </div>
+            )}
+          </>
         ) : (
           <video
             src={question.mediaUrl}
@@ -158,6 +194,17 @@ export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, 
         <p className="text-center text-white/40 text-xs">
           Tu peux encore changer — <span className="text-white/60">{question.options[myAnswer]}</span>
         </p>
+      )}
+
+      {isReveal && isHost && !autoChange && (
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onNextQuestion}
+          className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 rounded-xl transition-colors mt-1"
+        >
+          Question suivante →
+        </motion.button>
       )}
     </motion.div>
   );

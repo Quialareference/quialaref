@@ -3,6 +3,7 @@ import type { PlayerInfo, QuestionPayload, RevealPayload, ScoreEntry } from "./g
 export interface GameSettings {
   totalRounds: number;
   roundDurationMs: number;
+  autoChange: boolean;
 }
 
 // Client → Server
@@ -12,7 +13,9 @@ export type ClientMessage =
   | { type: "RESTART_GAME" }
   | { type: "SUBMIT_ANSWER"; option: "a" | "b" | "c" | "d"; clientTimestamp: number }
   | { type: "SET_SETTINGS"; settings: Partial<GameSettings> }
-  | { type: "KICK_PLAYER"; clientId: string };
+  | { type: "KICK_PLAYER"; clientId: string }
+  | { type: "NEXT_QUESTION" }
+  | { type: "PLAY_VIDEO" };
 
 // Server → Client
 export type ServerMessage =
@@ -23,4 +26,5 @@ export type ServerMessage =
   | { type: "ROUND_REVEAL"; reveal: RevealPayload }
   | { type: "GAME_OVER"; finalScores: ScoreEntry[] }
   | { type: "ERROR"; message: string }
-  | { type: "KICKED" };
+  | { type: "KICKED" }
+  | { type: "PLAY_VIDEO" };

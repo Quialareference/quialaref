@@ -21,6 +21,7 @@ export async function getApprovedRefs(limit = 50) {
     mediaType: r.mediaType,
     mediaUrl: r.mediaUrl,
     thumbnailUrl: r.thumbnailUrl,
+    youtubeUrl: r.youtubeUrl,
     submittedByUsername: r.author?.username ?? null,
     propositions: r.propositions,
   }));

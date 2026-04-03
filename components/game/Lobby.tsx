@@ -110,6 +110,19 @@ export function Lobby({ roomCode, players, onStart, myClientId, isHost, settings
                 ))}
               </div>
             </div>
+            <label className="flex items-center gap-3 cursor-pointer select-none mt-1">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={settings.autoChange}
+                  onChange={(e) => onSettingsChange({ autoChange: e.target.checked })}
+                  className="sr-only"
+                />
+                <div className={`w-10 h-6 rounded-full transition-colors ${settings.autoChange ? "bg-yellow-400" : "bg-white/20"}`} />
+                <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.autoChange ? "translate-x-4" : ""}`} />
+              </div>
+              <span className="text-white/70 text-sm">Passage automatique à la question suivante</span>
+            </label>
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import usePartySocket from "partysocket/react";
 import type { ClientMessage, ServerMessage, GameSettings } from "@/types/messages";
 import type { GameState, PlayerInfo, RevealPayload, ScoreEntry } from "@/types/game";
 
-const DEFAULT_SETTINGS: GameSettings = { totalRounds: 10, roundDurationMs: 10_000 };
+const DEFAULT_SETTINGS: GameSettings = { totalRounds: 10, roundDurationMs: 10_000, autoChange: true };
 
 const initialState: GameState = {
   phase: "lobby",
@@ -20,6 +20,7 @@ const initialState: GameState = {
   answeredCount: 0,
   hostClientId: null,
   settings: DEFAULT_SETTINGS,
+  showVideo: false,
   error: null,
 };
 
@@ -30,6 +31,7 @@ type Action =
   | { type: "PLAYER_ANSWERED"; answeredCount: number }
   | { type: "ROUND_REVEAL"; reveal: RevealPayload }
   | { type: "GAME_OVER"; finalScores: ScoreEntry[] }
+  | { type: "SHOW_VIDEO" }
   | { type: "SET_ERROR"; message: string };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -57,6 +59,7 @@ function reducer(state: GameState, action: Action): GameState {
         currentQuestion: action.question,
         myAnswer: null,
         reveal: null,
+        showVideo: false,
         round: action.question?.round ?? state.round,
         totalRounds: action.question?.total ?? state.totalRounds,
         answeredCount: 0,
@@ -75,6 +78,8 @@ function reducer(state: GameState, action: Action): GameState {
       };
     case "GAME_OVER":
       return { ...state, phase: "finished", scores: action.finalScores };
+    case "SHOW_VIDEO":
+      return { ...state, showVideo: true };
     case "SET_ERROR":
       return { ...state, error: action.message };
     default:
@@ -129,6 +134,9 @@ export function useGameState({ roomCode, clientId, pseudonym, userId, host, onKi
         case "ERROR":
           dispatch({ type: "SET_ERROR", message: msg.message });
           break;
+        case "PLAY_VIDEO":
+          dispatch({ type: "SHOW_VIDEO" });
+          break;
         case "KICKED":
           onKicked?.();
           break;
@@ -166,9 +174,17 @@ export function useGameState({ roomCode, clientId, pseudonym, userId, host, onKi
     socket.send(JSON.stringify({ type: "RESTART_GAME" } satisfies ClientMessage));
   }, [socket]);
 
+  const nextQuestion = useCallback(() => {
+    socket.send(JSON.stringify({ type: "NEXT_QUESTION" } satisfies ClientMessage));
+  }, [socket]);
+
+  const playVideo = useCallback(() => {
+    socket.send(JSON.stringify({ type: "PLAY_VIDEO" } satisfies ClientMessage));
+  }, [socket]);
+
   const isHost = state.hostClientId === clientId;
   const myScore = state.scores.find((s) => s.clientId === clientId)?.score ?? 0;
   const myRank = state.scores.find((s) => s.clientId === clientId)?.rank;
 
-  return { state, submitAnswer, startGame, updateSettings, kickPlayer, restartGame, isHost, myScore, myRank, myClientId: clientId };
+  return { state, submitAnswer, startGame, updateSettings, kickPlayer, restartGame, nextQuestion, playVideo, isHost, myScore, myRank, myClientId: clientId };
 }

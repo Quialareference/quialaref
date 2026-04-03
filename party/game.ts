@@ -12,6 +12,7 @@ interface RefData {
   mediaType: "image" | "video";
   mediaUrl: string;
   thumbnailUrl?: string | null;
+  youtubeUrl?: string | null;
   submittedByUsername?: string | null;
   propositions: { text: string }[];
 }
@@ -42,6 +43,7 @@ type GamePhase = "lobby" | "question" | "reveal" | "finished";
 const DEFAULT_SETTINGS: GameSettings = {
   totalRounds: 10,
   roundDurationMs: 10_000,
+  autoChange: true,
 };
 
 const REVEAL_DELAY_MS = 4_000;
@@ -230,6 +232,20 @@ export default class GameRoom implements Party.Server {
       case "RESTART_GAME":
         if (clientId === this.state.hostClientId) this.handleRestartGame();
         break;
+      case "NEXT_QUESTION":
+        if (clientId === this.state.hostClientId && this.state.phase === "reveal") {
+          if (this.state.refQueue.length > 0) {
+            this.startNextRound();
+          } else {
+            this.endGame();
+          }
+        }
+        break;
+      case "PLAY_VIDEO":
+        if (clientId === this.state.hostClientId) {
+          this.broadcast({ type: "PLAY_VIDEO" });
+        }
+        break;
     }
   }
 
@@ -352,7 +368,7 @@ export default class GameRoom implements Party.Server {
     if (this.state.players.size < 1) return;
 
     try {
-      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "http://localhost:3000";
+      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "https://quialaref.fr";
       const limit = this.state.settings.totalRounds;
       const res = await fetch(`${baseUrl}/api/refs?limit=${limit}`);
       const data = (await res.json()) as RefData[];
@@ -429,6 +445,7 @@ export default class GameRoom implements Party.Server {
         options,
         serverTimestamp: this.state.roundStartTime,
         durationMs: this.state.settings.roundDurationMs,
+        youtubeUrl: ref.youtubeUrl ?? null,
       },
     });
 
@@ -503,13 +520,15 @@ export default class GameRoom implements Party.Server {
 
     this.broadcast({ type: "ROUND_REVEAL", reveal });
 
-    setTimeout(() => {
-      if (this.state.refQueue.length > 0) {
-        this.startNextRound();
-      } else {
-        this.endGame();
-      }
-    }, REVEAL_DELAY_MS);
+    if (this.state.settings.autoChange) {
+      setTimeout(() => {
+        if (this.state.refQueue.length > 0) {
+          this.startNextRound();
+        } else {
+          this.endGame();
+        }
+      }, REVEAL_DELAY_MS);
+    }
   }
 
   private async endGame() {
@@ -518,7 +537,7 @@ export default class GameRoom implements Party.Server {
     this.broadcast({ type: "GAME_OVER", finalScores });
 
     try {
-      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "http://localhost:3000";
+      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "https://quialaref.fr";
       const players = Array.from(this.state.players.values()).map((p) => ({
         pseudonym: p.pseudonym,
         userId: p.userId,
