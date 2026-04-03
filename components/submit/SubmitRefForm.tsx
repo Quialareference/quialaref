@@ -459,9 +459,19 @@ export function SubmitRefForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
-      {/* 1. URL YouTube / TikTok */}
+      {/* 1. Titre */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">1. Lien YouTube <span className="text-[--text-muted] font-normal text-sm">(optionnel)</span></h2>
+        <h2 className="text-[--text] font-bold mb-1">1. Nom de la référence</h2>
+        <p className="text-[--text-muted] text-sm mb-3">Le nom complet tel qu&apos;il est connu</p>
+        <input type="text" placeholder="Ex: Le Harlem Shake, Nabila, Gangnam Style…" value={title}
+          onChange={e => setTitle(e.target.value.slice(0, 100))}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+        />
+      </div>
+
+      {/* 2. URL YouTube */}
+      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
+        <h2 className="text-[--text] font-bold mb-1">2. Lien YouTube <span className="text-[--text-muted] font-normal text-sm">(optionnel)</span></h2>
         <p className="text-[--text-muted] text-sm mb-3">La miniature et la transcription seront récupérées automatiquement.</p>
         <input type="url" placeholder="https://www.youtube.com/watch?v=..." value={url}
           onChange={e => setUrl(e.target.value)}
@@ -489,9 +499,9 @@ export function SubmitRefForm() {
         )}
       </div>
 
-      {/* 2. Image / Vidéo */}
+      {/* 3. Image / Vidéo */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-3">2. Image ou vidéo</h2>
+        <h2 className="text-[--text] font-bold mb-3">3. Image ou vidéo</h2>
         <label className="block cursor-pointer"
           onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
@@ -518,16 +528,6 @@ export function SubmitRefForm() {
             ✕ Supprimer
           </button>
         )}
-      </div>
-
-      {/* 3. Titre */}
-      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">3. Nom de la référence</h2>
-        <p className="text-[--text-muted] text-sm mb-3">Le nom complet tel qu&apos;il est connu</p>
-        <input type="text" placeholder="Ex: Le Harlem Shake, Nabila, Gangnam Style…" value={title}
-          onChange={e => setTitle(e.target.value.slice(0, 100))}
-          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-        />
       </div>
 
       {/* 4. Transcription + sélection de passages */}
