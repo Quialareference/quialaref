@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
 async function uploadFile(file: File): Promise<{ url: string; path: string; mediaType: "image" | "video" }> {
@@ -36,6 +36,32 @@ export function SubmitRefForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+
+  const [youtubeThumbnail, setYoutubeThumbnail] = useState<string | null>(null);
+  const [youtubeTranscript, setYoutubeTranscript] = useState<string | null>(null);
+  const [youtubeFetching, setYoutubeFetching] = useState(false);
+  const [usingThumbnailAsMedia, setUsingThumbnailAsMedia] = useState(false);
+  const youtubeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (youtubeDebounce.current) clearTimeout(youtubeDebounce.current);
+    setYoutubeThumbnail(null);
+    setYoutubeTranscript(null);
+    setUsingThumbnailAsMedia(false);
+    if (!youtubeUrl.trim()) return;
+    youtubeDebounce.current = setTimeout(async () => {
+      setYoutubeFetching(true);
+      try {
+        const res = await fetch(`/api/youtube/info?url=${encodeURIComponent(youtubeUrl)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setYoutubeThumbnail(data.thumbnailUrl ?? null);
+          setYoutubeTranscript(data.transcript ?? null);
+        }
+      } catch {}
+      setYoutubeFetching(false);
+    }, 800);
+  }, [youtubeUrl]);
 
   const tokens = tokenize(questionText);
   const wordTokens = tokens.map((t, i) => ({ token: t, index: i, isWord: isWord(t) }));
@@ -106,7 +132,7 @@ export function SubmitRefForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) { setError("Ajoute une image ou une vidéo."); return; }
+    if (!file && !usingThumbnailAsMedia) { setError("Ajoute une image ou une vidéo."); return; }
     if (!title.trim()) { setError("Indique le nom complet de la référence."); return; }
     if (!questionText.trim()) { setError("Écris une question."); return; }
     if (!correctAnswer) { setError(isConsecutive ? "Sélectionne au moins un mot comme bonne réponse." : "Les mots sélectionnés doivent être consécutifs."); return; }
@@ -120,7 +146,20 @@ export function SubmitRefForm() {
     setError("");
 
     try {
-      const uploaded = await uploadFile(file);
+      let mediaUrl: string;
+      let mediaPublicId: string | undefined;
+      let finalMediaType: "image" | "video";
+
+      if (usingThumbnailAsMedia && youtubeThumbnail) {
+        mediaUrl = youtubeThumbnail;
+        mediaPublicId = undefined;
+        finalMediaType = "image";
+      } else {
+        const uploaded = await uploadFile(file!);
+        mediaUrl = uploaded.url;
+        mediaPublicId = uploaded.path;
+        finalMediaType = uploaded.mediaType;
+      }
 
       const res = await fetch("/api/refs", {
         method: "POST",
@@ -129,9 +168,9 @@ export function SubmitRefForm() {
           title: title.trim(),
           question: questionPreview.trim(),
           correctAnswer: correctAnswer!.trim(),
-          mediaType: uploaded.mediaType,
-          mediaUrl: uploaded.url,
-          mediaPublicId: uploaded.path,
+          mediaType: finalMediaType,
+          mediaUrl,
+          mediaPublicId,
           youtubeUrl: youtubeUrl.trim() || undefined,
           falsePropositions: validFalse,
         }),
@@ -172,6 +211,9 @@ export function SubmitRefForm() {
             setYoutubeUrl("");
             setFile(null);
             setPreview(null);
+            setYoutubeThumbnail(null);
+            setYoutubeTranscript(null);
+            setUsingThumbnailAsMedia(false);
           }}
           className="mt-6 text-yellow-400 hover:text-yellow-300 text-sm transition-colors"
         >
@@ -226,6 +268,58 @@ export function SubmitRefForm() {
           onChange={(e) => setYoutubeUrl(e.target.value)}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
         />
+
+        {youtubeFetching && (
+          <p className="text-white/40 text-xs mt-3 animate-pulse">Récupération des infos YouTube…</p>
+        )}
+
+        {youtubeThumbnail && !youtubeFetching && (
+          <div className="mt-3">
+            <p className="text-white/50 text-xs mb-2">Miniature détectée :</p>
+            <div className="flex items-start gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={youtubeThumbnail} alt="Miniature YouTube" className="w-36 rounded-lg object-cover border border-white/10" />
+              {!usingThumbnailAsMedia && !file && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreview(youtubeThumbnail);
+                    setMediaType("image");
+                    setFile(null);
+                    setUsingThumbnailAsMedia(true);
+                  }}
+                  className="text-yellow-400 hover:text-yellow-300 text-xs font-semibold bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/30 rounded-lg px-3 py-2 transition-colors"
+                >
+                  ✓ Utiliser cette miniature
+                </button>
+              )}
+              {usingThumbnailAsMedia && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-green-400 text-xs font-semibold">✓ Miniature utilisée comme image</span>
+                  <button
+                    type="button"
+                    onClick={() => { setUsingThumbnailAsMedia(false); setPreview(null); }}
+                    className="text-white/30 hover:text-white/60 text-xs transition-colors"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {youtubeTranscript && !youtubeFetching && (
+          <div className="mt-4">
+            <p className="text-white/50 text-xs mb-2">Transcription automatique :</p>
+            <textarea
+              readOnly
+              value={youtubeTranscript}
+              rows={4}
+              className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-white/50 text-xs resize-y focus:outline-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* 2. Nom de la ref */}

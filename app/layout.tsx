@@ -33,7 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased min-h-screen`}>
         <Providers>
-          {isWikiDomain && !isWikiPath && !isSubmitPath && <WikiHeader />}
+          {isWikiDomain && <WikiHeader />}
           {!isWikiDomain && !isWikiPath && !isSubmitPath && <Header />}
           {children}
         </Providers>

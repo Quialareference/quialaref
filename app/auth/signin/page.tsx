@@ -133,6 +133,9 @@ export default function SignInPage() {
               >
                 {loading ? "Connexion…" : "Se connecter"}
               </motion.button>
+              <Link href="/auth/forgot-password" className="text-center text-sm text-yellow-400 hover:text-yellow-300 transition-colors">
+                Mot de passe oublié ?
+              </Link>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="bg-[--bg-card] border border-[--border] rounded-2xl p-5 flex flex-col gap-4">

@@ -14,6 +14,7 @@ export function Header() {
   const isInGame = pathname.startsWith("/room/");
   const isWiki = pathname.startsWith("/wiki");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   function handleLogoClick(e: React.MouseEvent) {
     if (isInGame) {
@@ -22,35 +23,52 @@ export function Header() {
     }
   }
 
+  const userIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+      <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
+    </svg>
+  );
+
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-[--border] bg-[--bg]/80 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between py-2.5 px-4">
 
-          {/* Left */}
+          {/* Mobile: hamburger — Desktop: left buttons */}
           <div className="flex items-center gap-2 w-44">
-            <ThemeToggle />
-            {session?.user ? (
-              <Link
-                href="/settings"
-                className="flex items-center gap-1.5 text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full whitespace-nowrap max-w-[120px]"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
-                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
-                </svg>
-                <span className="truncate">{session.user.username ?? session.user.email?.split("@")[0]}</span>
-              </Link>
-            ) : (
-              <Link
-                href="/auth/signin"
-                className="flex items-center gap-1.5 text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full whitespace-nowrap"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
-                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
-                </svg>
-                Se connecter
-              </Link>
-            )}
+
+            {/* Hamburger (mobile only) */}
+            <button
+              className="sm:hidden flex flex-col gap-1.5 p-1"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Menu"
+            >
+              <span className="block w-5 h-0.5 bg-[--text]" />
+              <span className="block w-5 h-0.5 bg-[--text]" />
+              <span className="block w-5 h-0.5 bg-[--text]" />
+            </button>
+
+            {/* Desktop left items */}
+            <div className="hidden sm:flex items-center gap-2">
+              <ThemeToggle />
+              {session?.user ? (
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-1.5 text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full whitespace-nowrap max-w-[120px]"
+                >
+                  {userIcon}
+                  <span className="truncate">{session.user.username ?? session.user.email?.split("@")[0]}</span>
+                </Link>
+              ) : (
+                <Link
+                  href="/auth/signin"
+                  className="flex items-center gap-1.5 text-xs font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-3 py-1.5 rounded-full whitespace-nowrap"
+                >
+                  {userIcon}
+                  Se connecter
+                </Link>
+              )}
+            </div>
           </div>
 
           {/* Logo centré */}
@@ -91,6 +109,71 @@ export function Header() {
 
         </div>
       </header>
+
+      {/* Mobile menu overlay */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[100] sm:hidden">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
+          <div className="absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[--bg-card] border-r border-[--border] flex flex-col p-6 gap-4 shadow-2xl">
+            {/* Close + logo */}
+            <div className="flex items-center justify-between mb-2">
+              <Image src="/logo.png" alt="Qui a la réf ?" width={120} height={42} className="h-10 w-auto" />
+              <button onClick={() => setMenuOpen(false)} className="text-[--text-muted] hover:text-[--text] text-2xl leading-none">✕</button>
+            </div>
+
+            <div className="border-t border-[--border]" />
+
+            {/* Theme toggle */}
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <span className="text-[--text-muted] text-sm">Thème</span>
+            </div>
+
+            <div className="border-t border-[--border]" />
+
+            {/* Auth */}
+            {session?.user ? (
+              <Link
+                href="/settings"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+              >
+                {userIcon}
+                <span className="truncate">{session.user.username ?? session.user.email?.split("@")[0]}</span>
+              </Link>
+            ) : (
+              <Link
+                href="/auth/signin"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+              >
+                {userIcon}
+                Se connecter
+              </Link>
+            )}
+
+            <a
+              href="https://wikiref.fr/submit"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl text-center"
+            >
+              + Ajouter une réf
+            </a>
+
+            <a
+              href="https://wikiref.fr"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl text-center"
+            >
+              Parcourir le wiki
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Confirm modal — in-game only */}
       {showConfirm && (
