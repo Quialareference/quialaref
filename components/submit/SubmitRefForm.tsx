@@ -7,35 +7,31 @@ import { motion, AnimatePresence } from "framer-motion";
 
 type QType = "blank" | "open" | "closed";
 
-interface Moment {
+interface Question {
   id: string;
-  passage: string;       // selected text from transcript
-  context: string;
   expanded: boolean;
   qType: QType;
-  qText: string;         // question sentence
-  // blank / open
+  qText: string;
   selectedIndices: Set<number>;
   falseProps: string[];
   openAnswer: string;
-  // closed
   closedAnswer: "Oui" | "Non";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let _uid = 0;
-const uid = () => `m${++_uid}`;
+const uid = () => `q${++_uid}`;
 
 function tokenize(s: string): string[] {
   return s.split(/(\s+)/).filter(Boolean);
 }
 function isWord(t: string) { return /\S/.test(t); }
 
-function defaultMoment(passage: string): Moment {
+function defaultQuestion(): Question {
   return {
-    id: uid(), passage, context: "", expanded: true,
-    qType: "blank", qText: passage,
+    id: uid(), expanded: true,
+    qType: "blank", qText: "",
     selectedIndices: new Set(), falseProps: ["", "", "", "", "", ""],
     openAnswer: "", closedAnswer: "Oui",
   };
@@ -60,58 +56,58 @@ async function uploadFile(file: File) {
 
 // ─── BlankBuilder ─────────────────────────────────────────────────────────────
 
-function BlankBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
-  const tokens = tokenize(m.qText);
-  const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
+function BlankBuilder({ q, onChange }: { q: Question; onChange: (p: Partial<Question>) => void }) {
+  const tokens = tokenize(q.qText);
+  const sorted = Array.from(q.selectedIndices).sort((a, b) => a - b);
   const consecutive = sorted.length > 0 && sorted.every(
     (idx, i) => i === 0 || tokens.slice(sorted[i - 1] + 1, idx).every(t => !isWord(t))
   );
   const answer = consecutive && sorted.length > 0 ? sorted.map(i => tokens[i]).join(" ") : null;
   const preview = sorted.length > 0
-    ? tokens.map((t, i) => m.selectedIndices.has(i) ? null : t)
+    ? tokens.map((t, i) => q.selectedIndices.has(i) ? null : t)
         .reduce<string[]>((acc, t) => {
           if (t === null) { if (acc[acc.length - 1] !== "___") acc.push("___"); }
           else acc.push(t);
           return acc;
         }, []).join("")
-    : m.qText;
+    : q.qText;
 
   return (
     <div className="flex flex-col gap-3">
       <div>
         <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Phrase</label>
-        <textarea value={m.qText} rows={2} placeholder="La phrase contenant la bonne réponse"
+        <textarea value={q.qText} rows={2} placeholder="La phrase contenant la bonne réponse"
           onChange={e => onChange({ qText: e.target.value.slice(0, 200), selectedIndices: new Set() })}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
         />
       </div>
-      {m.qText.trim() && (
+      {q.qText.trim() && (
         <div>
           <p className="text-[--text-muted] text-xs mb-2">Clique sur le(s) mot(s) = bonne réponse :</p>
           <div className="flex flex-wrap gap-1">
             {tokens.map((t, i) =>
               isWord(t) ? (
                 <button key={i} type="button" onClick={() => {
-                  const next = new Set(m.selectedIndices);
+                  const next = new Set(q.selectedIndices);
                   next.has(i) ? next.delete(i) : next.add(i);
                   onChange({ selectedIndices: next });
                 }}
-                  className={`px-2 py-1 rounded-lg text-sm font-medium transition-all ${m.selectedIndices.has(i) ? "bg-yellow-400 text-gray-900 font-bold" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+                  className={`px-2 py-1 rounded-lg text-sm font-medium transition-all ${q.selectedIndices.has(i) ? "bg-yellow-400 text-gray-900 font-bold" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
                   {t}
                 </button>
               ) : <span key={i} className="text-[--text-muted] text-sm py-1">{t}</span>
             )}
           </div>
-          {!consecutive && m.selectedIndices.size > 0 && <p className="text-orange-400 text-xs mt-1">Les mots doivent être consécutifs.</p>}
-          {answer && <p className="text-[--text-muted] text-xs mt-2">Bonne réponse : <span className="text-yellow-400 font-semibold">{answer}</span> — Aperçu : <em className="text-[--text-muted]">{preview}</em></p>}
+          {!consecutive && q.selectedIndices.size > 0 && <p className="text-orange-400 text-xs mt-1">Les mots doivent être consécutifs.</p>}
+          {answer && <p className="text-[--text-muted] text-xs mt-2">Bonne réponse : <span className="text-yellow-400 font-semibold">{answer}</span> — <em>{preview}</em></p>}
         </div>
       )}
       <div>
         <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Propositions fausses <span className="normal-case font-normal">(3 min)</span></p>
         <div className="grid grid-cols-2 gap-2">
-          {m.falseProps.map((v, i) => (
+          {q.falseProps.map((v, i) => (
             <input key={i} type="text" placeholder={i < 3 ? "Requis" : "Optionnel"} value={v}
-              onChange={e => { const next = [...m.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
+              onChange={e => { const next = [...q.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
               className="bg-[--bg-input] border border-[--border] rounded-xl px-3 py-2 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
             />
           ))}
@@ -123,19 +119,19 @@ function BlankBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment
 
 // ─── OpenBuilder ──────────────────────────────────────────────────────────────
 
-function OpenBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
+function OpenBuilder({ q, onChange }: { q: Question; onChange: (p: Partial<Question>) => void }) {
   return (
     <div className="flex flex-col gap-3">
       <div>
         <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Question</label>
-        <textarea value={m.qText} rows={2} placeholder="Ex: Comment s'appelle ce personnage ?"
+        <textarea value={q.qText} rows={2} placeholder="Ex: Comment s'appelle ce personnage ?"
           onChange={e => onChange({ qText: e.target.value.slice(0, 200) })}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
         />
       </div>
       <div>
         <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Bonne réponse</label>
-        <input type="text" value={m.openAnswer} placeholder="La réponse correcte"
+        <input type="text" value={q.openAnswer} placeholder="La réponse correcte"
           onChange={e => onChange({ openAnswer: e.target.value.slice(0, 80) })}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
         />
@@ -143,9 +139,9 @@ function OpenBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>
       <div>
         <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Propositions fausses <span className="normal-case font-normal">(3 min)</span></p>
         <div className="grid grid-cols-2 gap-2">
-          {m.falseProps.slice(0, 6).map((v, i) => (
+          {q.falseProps.map((v, i) => (
             <input key={i} type="text" placeholder={i < 3 ? "Requis" : "Optionnel"} value={v}
-              onChange={e => { const next = [...m.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
+              onChange={e => { const next = [...q.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
               className="bg-[--bg-input] border border-[--border] rounded-xl px-3 py-2 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
             />
           ))}
@@ -157,12 +153,12 @@ function OpenBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>
 
 // ─── ClosedBuilder ────────────────────────────────────────────────────────────
 
-function ClosedBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
+function ClosedBuilder({ q, onChange }: { q: Question; onChange: (p: Partial<Question>) => void }) {
   return (
     <div className="flex flex-col gap-3">
       <div>
         <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Question</label>
-        <textarea value={m.qText} rows={2} placeholder="Ex: Ce mème vient bien de Twitter ?"
+        <textarea value={q.qText} rows={2} placeholder="Ex: Ce mème vient bien de Twitter ?"
           onChange={e => onChange({ qText: e.target.value.slice(0, 200) })}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
         />
@@ -172,7 +168,7 @@ function ClosedBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Momen
         <div className="flex gap-2">
           {(["Oui", "Non"] as const).map(v => (
             <button key={v} type="button" onClick={() => onChange({ closedAnswer: v })}
-              className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${m.closedAnswer === v ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+              className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${q.closedAnswer === v ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
               {v}
             </button>
           ))}
@@ -182,65 +178,56 @@ function ClosedBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Momen
   );
 }
 
-// ─── MomentCard ───────────────────────────────────────────────────────────────
+// ─── QuestionCard ─────────────────────────────────────────────────────────────
 
-const Q_TYPES: { key: QType; label: string; desc: string }[] = [
-  { key: "blank",  label: "Texte à trou",    desc: "Complète la phrase" },
-  { key: "open",   label: "Question ouverte", desc: "4 choix libres" },
-  { key: "closed", label: "Oui / Non",        desc: "Réponse binaire" },
+const Q_TYPES: { key: QType; label: string }[] = [
+  { key: "blank",  label: "Texte à trou" },
+  { key: "open",   label: "Question ouverte" },
+  { key: "closed", label: "Oui / Non" },
 ];
 
-function MomentCard({ m, index, onUpdate, onRemove }: {
-  m: Moment; index: number;
-  onUpdate: (p: Partial<Moment>) => void;
+function QuestionCard({ q, index, onUpdate, onRemove }: {
+  q: Question; index: number;
+  onUpdate: (p: Partial<Question>) => void;
   onRemove: () => void;
 }) {
   return (
     <div className="bg-[--bg-card] border border-[--border] rounded-2xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-        onClick={() => onUpdate({ expanded: !m.expanded })}>
+        onClick={() => onUpdate({ expanded: !q.expanded })}>
         <span className="text-[--text-muted] text-xs font-mono w-5">#{index + 1}</span>
-        <p className="flex-1 text-[--text] text-sm truncate italic text-[--text-muted]">&ldquo;{m.passage}&rdquo;</p>
+        <p className="flex-1 text-[--text] text-sm font-medium">
+          {q.qText.trim() ? q.qText.slice(0, 60) + (q.qText.length > 60 ? "…" : "") : <span className="text-[--text-muted] italic">Nouvelle question</span>}
+        </p>
+        <span className="text-[--text-muted] text-xs bg-white/5 px-2 py-0.5 rounded-full">
+          {Q_TYPES.find(t => t.key === q.qType)?.label}
+        </span>
         <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="text-red-400/50 hover:text-red-400 text-xs transition-colors mr-1">✕</button>
-        <span className="text-[--text-muted] text-xs">{m.expanded ? "▲" : "▼"}</span>
+          className="text-red-400/50 hover:text-red-400 text-xs transition-colors ml-1">✕</button>
+        <span className="text-[--text-muted] text-xs">{q.expanded ? "▲" : "▼"}</span>
       </div>
 
       <AnimatePresence initial={false}>
-        {m.expanded && (
+        {q.expanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
             <div className="border-t border-[--border] px-4 py-4 flex flex-col gap-4">
-              {/* Context */}
-              <div>
-                <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Contexte <span className="normal-case font-normal">(optionnel)</span></label>
-                <input type="text" value={m.context} placeholder="Ex: Extrait de la vidéo à 0:42"
-                  onChange={e => onUpdate({ context: e.target.value.slice(0, 150) })}
-                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
-                />
+              {/* Type selector */}
+              <div className="flex gap-2">
+                {Q_TYPES.map(({ key, label }) => (
+                  <button key={key} type="button" onClick={() => onUpdate({ qType: key })}
+                    className={`flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-colors text-center ${q.qType === key ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              {/* Question type selector */}
-              <div>
-                <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Type de question</p>
-                <div className="flex gap-2">
-                  {Q_TYPES.map(({ key, label }) => (
-                    <button key={key} type="button" onClick={() => onUpdate({ qType: key })}
-                      className={`flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-colors text-center ${m.qType === key ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Builder */}
-              {m.qType === "blank"  && <BlankBuilder  m={m} onChange={onUpdate} />}
-              {m.qType === "open"   && <OpenBuilder   m={m} onChange={onUpdate} />}
-              {m.qType === "closed" && <ClosedBuilder m={m} onChange={onUpdate} />}
+              {q.qType === "blank"  && <BlankBuilder  q={q} onChange={onUpdate} />}
+              {q.qType === "open"   && <OpenBuilder   q={q} onChange={onUpdate} />}
+              {q.qType === "closed" && <ClosedBuilder q={q} onChange={onUpdate} />}
             </div>
           </motion.div>
         )}
@@ -255,7 +242,6 @@ export function SubmitRefForm() {
   const [url, setUrl]             = useState("");
   const [videoId, setVideoId]     = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState("");
   const [fetching, setFetching]   = useState(false);
 
   const [file, setFile]           = useState<File | null>(null);
@@ -265,20 +251,17 @@ export function SubmitRefForm() {
   const [isDragging, setIsDragging] = useState(false);
 
   const [title, setTitle]         = useState("");
-  const [moments, setMoments]     = useState<Moment[]>([]);
-  const [highlight, setHighlight] = useState<{ start: number; end: number } | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
 
   const [loading, setLoading]     = useState(false);
   const [success, setSuccess]     = useState(false);
   const [error, setError]         = useState("");
 
-  const transcriptRef = useRef<HTMLTextAreaElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-fetch on URL change
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    setThumbnail(null); setTranscript(""); setVideoId(null);
+    setThumbnail(null); setVideoId(null);
     if (!url.trim()) return;
     const id = getYoutubeId(url);
     if (!id) return;
@@ -290,7 +273,6 @@ export function SubmitRefForm() {
         if (res.ok) {
           const data = await res.json();
           setThumbnail(data.thumbnailUrl ?? null);
-          setTranscript(data.transcript ?? "");
         }
       } catch {}
       setFetching(false);
@@ -303,70 +285,42 @@ export function SubmitRefForm() {
     setPreview(URL.createObjectURL(f));
   }
 
-  function useThumbnail() {
-    if (!thumbnail) return;
-    setPreview(thumbnail); setMediaType("image");
-    setFile(null); setUsingThumb(true);
+  function updateQuestion(id: string, patch: Partial<Question>) {
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q));
   }
 
-  function handleSelect() {
-    const el = transcriptRef.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e } = el;
-    setHighlight(s < e ? { start: s, end: e } : null);
-  }
-
-  function addMoment() {
-    if (!highlight) return;
-    const text = transcript.slice(highlight.start, highlight.end).trim();
-    if (!text) return;
-    setMoments(prev => [...prev, defaultMoment(text)]);
-    setHighlight(null);
-    transcriptRef.current?.blur();
-  }
-
-  function updateMoment(id: string, patch: Partial<Moment>) {
-    setMoments(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m));
-  }
-
-  function removeMoment(id: string) {
-    setMoments(prev => prev.filter(m => m.id !== id));
-  }
-
-  // Validate one moment before submit
-  function validateMoment(m: Moment): string | null {
-    if (!m.qText.trim()) return `Moment #${moments.indexOf(m) + 1} : question manquante.`;
-    if (m.qType === "blank") {
-      const tokens = tokenize(m.qText);
-      const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
+  function validateQuestion(q: Question, i: number): string | null {
+    if (!q.qText.trim()) return `Question #${i + 1} : phrase manquante.`;
+    if (q.qType === "blank") {
+      const tokens = tokenize(q.qText);
+      const sorted = Array.from(q.selectedIndices).sort((a, b) => a - b);
       const consecutive = sorted.length > 0 && sorted.every(
-        (idx, i) => i === 0 || tokens.slice(sorted[i - 1] + 1, idx).every(t => !isWord(t))
+        (idx, j) => j === 0 || tokens.slice(sorted[j - 1] + 1, idx).every(t => !isWord(t))
       );
-      if (!consecutive || sorted.length === 0) return `Moment #${moments.indexOf(m) + 1} : sélectionne la bonne réponse.`;
-      if (m.falseProps.filter(p => p.trim()).length < 3) return `Moment #${moments.indexOf(m) + 1} : 3 propositions fausses minimum.`;
+      if (!consecutive || sorted.length === 0) return `Question #${i + 1} : sélectionne la bonne réponse.`;
+      if (q.falseProps.filter(p => p.trim()).length < 3) return `Question #${i + 1} : 3 propositions fausses minimum.`;
     }
-    if (m.qType === "open") {
-      if (!m.openAnswer.trim()) return `Moment #${moments.indexOf(m) + 1} : bonne réponse manquante.`;
-      if (m.falseProps.filter(p => p.trim()).length < 3) return `Moment #${moments.indexOf(m) + 1} : 3 propositions fausses minimum.`;
+    if (q.qType === "open") {
+      if (!q.openAnswer.trim()) return `Question #${i + 1} : bonne réponse manquante.`;
+      if (q.falseProps.filter(p => p.trim()).length < 3) return `Question #${i + 1} : 3 propositions fausses minimum.`;
     }
     return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!preview && !file && !usingThumb) { setError("Ajoute une image ou une vidéo."); return; }
+    if (!preview && !usingThumb) { setError("Ajoute une image ou une vidéo."); return; }
     if (!title.trim()) { setError("Indique le titre de la référence."); return; }
-    if (moments.length === 0) { setError("Ajoute au moins un moment de référence."); return; }
-    for (const m of moments) {
-      const err = validateMoment(m);
+    if (questions.length === 0) { setError("Ajoute au moins une question."); return; }
+    for (let i = 0; i < questions.length; i++) {
+      const err = validateQuestion(questions[i], i);
       if (err) { setError(err); return; }
     }
 
     setLoading(true); setError("");
     try {
-      // Upload media once
       let mediaUrl: string;
-      let mediaPublicId: string | undefined;
+      let mediaPublicId: string;
       let finalMediaType: "image" | "video";
 
       if (usingThumb && thumbnail) {
@@ -378,51 +332,40 @@ export function SubmitRefForm() {
         mediaUrl = up.url; mediaPublicId = up.path; finalMediaType = up.mediaType;
       }
 
-      // Submit each moment as a separate ref
-      for (const m of moments) {
-        const tokens = tokenize(m.qText);
-        const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
-        let question = m.qText;
+      for (const q of questions) {
+        const tokens = tokenize(q.qText);
+        const sorted = Array.from(q.selectedIndices).sort((a, b) => a - b);
+        let question = q.qText;
         let correctAnswer = "";
         let falsePropositions: string[] = [];
 
-        if (m.qType === "blank") {
+        if (q.qType === "blank") {
           correctAnswer = sorted.map(i => tokens[i]).join(" ");
-          // rebuild question with ___
-          question = tokens.map((t, i) => m.selectedIndices.has(i) ? null : t)
+          question = tokens.map((t, i) => q.selectedIndices.has(i) ? null : t)
             .reduce<string[]>((acc, t) => {
               if (t === null) { if (acc[acc.length - 1] !== "___") acc.push("___"); }
               else acc.push(t);
               return acc;
             }, []).join("");
-          falsePropositions = m.falseProps.filter(p => p.trim());
-        } else if (m.qType === "open") {
-          correctAnswer = m.openAnswer.trim();
-          falsePropositions = m.falseProps.filter(p => p.trim());
+          falsePropositions = q.falseProps.filter(p => p.trim());
+        } else if (q.qType === "open") {
+          correctAnswer = q.openAnswer.trim();
+          falsePropositions = q.falseProps.filter(p => p.trim());
         } else {
-          // closed
-          correctAnswer = m.closedAnswer;
-          falsePropositions = [m.closedAnswer === "Oui" ? "Non" : "Oui"];
+          correctAnswer = q.closedAnswer;
+          falsePropositions = [q.closedAnswer === "Oui" ? "Non" : "Oui"];
         }
 
         const res = await fetch("/api/refs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: title.trim(),
-            question: question.trim(),
-            correctAnswer,
-            mediaType: finalMediaType,
-            mediaUrl,
-            mediaPublicId,
-            youtubeUrl: url.trim() || undefined,
-            falsePropositions,
+            title: title.trim(), question: question.trim(),
+            correctAnswer, mediaType: finalMediaType, mediaUrl, mediaPublicId,
+            youtubeUrl: url.trim() || undefined, falsePropositions,
           }),
         });
-        if (!res.ok) {
-          const d = await res.json();
-          throw new Error(d.error ?? "Erreur lors de la soumission");
-        }
+        if (!res.ok) throw new Error((await res.json()).error ?? "Erreur");
       }
       setSuccess(true);
     } catch (err) {
@@ -433,19 +376,18 @@ export function SubmitRefForm() {
   }
 
   function reset() {
-    setUrl(""); setVideoId(null); setThumbnail(null); setTranscript("");
+    setUrl(""); setVideoId(null); setThumbnail(null);
     setFile(null); setPreview(null); setUsingThumb(false);
-    setTitle(""); setMoments([]); setHighlight(null); setSuccess(false); setError("");
+    setTitle(""); setQuestions([]); setSuccess(false); setError("");
   }
 
-  // ── Success screen ─────────────────────────────────────────────────────────
   if (success) {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         className="bg-green-500/20 border border-green-500/40 rounded-2xl p-8 text-center">
         <p className="text-4xl mb-3">🎉</p>
         <h2 className="text-2xl font-black text-[--text]">
-          {moments.length > 1 ? `${moments.length} questions soumises !` : "Référence soumise !"}
+          {questions.length > 1 ? `${questions.length} questions soumises !` : "Référence soumise !"}
         </h2>
         <p className="text-[--text-muted] mt-2">Elles seront vérifiées avant d&apos;apparaître. Merci !</p>
         <button onClick={reset} className="mt-6 text-yellow-400 hover:text-yellow-300 text-sm transition-colors">
@@ -455,7 +397,6 @@ export function SubmitRefForm() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
@@ -469,22 +410,21 @@ export function SubmitRefForm() {
         />
       </div>
 
-      {/* 2. URL YouTube */}
+      {/* 2. Lien YouTube */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
         <h2 className="text-[--text] font-bold mb-1">2. Lien YouTube <span className="text-[--text-muted] font-normal text-sm">(optionnel)</span></h2>
-        <p className="text-[--text-muted] text-sm mb-3">La miniature et la transcription seront récupérées automatiquement.</p>
+        <p className="text-[--text-muted] text-sm mb-3">La miniature sera récupérée automatiquement.</p>
         <input type="url" placeholder="https://www.youtube.com/watch?v=..." value={url}
           onChange={e => setUrl(e.target.value)}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
         />
         {fetching && <p className="text-[--text-muted] text-xs mt-2 animate-pulse">Récupération en cours…</p>}
-
         {thumbnail && !fetching && (
           <div className="flex items-start gap-3 mt-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={thumbnail} alt="Miniature" className="w-32 rounded-lg border border-[--border] object-cover" />
             {!preview ? (
-              <button type="button" onClick={useThumbnail}
+              <button type="button" onClick={() => { setPreview(thumbnail); setMediaType("image"); setFile(null); setUsingThumb(true); }}
                 className="text-yellow-400 hover:text-yellow-300 text-xs font-semibold bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/30 rounded-lg px-3 py-2 transition-colors">
                 ✓ Utiliser comme image
               </button>
@@ -509,7 +449,8 @@ export function SubmitRefForm() {
           <div className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors ${isDragging ? "border-yellow-400 bg-yellow-400/10" : "border-[--border] hover:border-yellow-400/50"}`}>
             {preview ? (
               mediaType === "image"
-                ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={preview} alt="Aperçu" className="max-h-40 mx-auto rounded-lg object-contain" />
+                /* eslint-disable-next-line @next/next/no-img-element */
+                ? <img src={preview} alt="Aperçu" className="max-h-40 mx-auto rounded-lg object-contain" />
                 : <video src={preview} muted playsInline className="max-h-40 mx-auto rounded-lg" controls />
             ) : (
               <div className="text-[--text-muted]">
@@ -530,61 +471,35 @@ export function SubmitRefForm() {
         )}
       </div>
 
-      {/* 4. Transcription + sélection de passages */}
-      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">4. Passages <span className="text-[--text-muted] font-normal text-sm">(transcription ou description)</span></h2>
-        <p className="text-[--text-muted] text-sm mb-3">
-          Sélectionne un passage dans le texte pour créer un moment de référence.
-        </p>
-        <div className="relative">
-          <textarea ref={transcriptRef} value={transcript} rows={6}
-            placeholder="La transcription sera remplie automatiquement si tu as mis un lien YouTube — ou écris ici ce que tu veux…"
-            onChange={e => setTranscript(e.target.value)}
-            onSelect={handleSelect} onMouseUp={handleSelect} onKeyUp={handleSelect}
-            className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y text-sm leading-relaxed"
-          />
-        </div>
-
-        <AnimatePresence>
-          {highlight && (
-            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="mt-3 flex items-center gap-3 bg-yellow-400/10 border border-yellow-400/30 rounded-xl px-4 py-3">
-              <p className="flex-1 text-yellow-300 text-sm italic truncate">
-                &ldquo;{transcript.slice(highlight.start, highlight.end).trim()}&rdquo;
-              </p>
-              <button type="button" onClick={addMoment}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
-                + Ajouter comme moment
-              </button>
-              <button type="button" onClick={() => setHighlight(null)}
-                className="text-yellow-400/60 hover:text-yellow-400 text-xs">✕</button>
-            </motion.div>
+      {/* 4. Questions */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[--text] font-bold">4. Questions</h2>
+          {questions.length > 0 && (
+            <span className="text-[--text-muted] text-xs">{questions.length} question{questions.length > 1 ? "s" : ""}</span>
           )}
-        </AnimatePresence>
-      </div>
-
-      {/* 5. Moments */}
-      {moments.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[--text] font-bold">5. Moments de référence</h2>
-            <span className="text-[--text-muted] text-xs">{moments.length} moment{moments.length > 1 ? "s" : ""}</span>
-          </div>
-          {moments.map((m, i) => (
-            <MomentCard key={m.id} m={m} index={i}
-              onUpdate={p => updateMoment(m.id, p)}
-              onRemove={() => removeMoment(m.id)}
-            />
-          ))}
         </div>
-      )}
+
+        {questions.map((q, i) => (
+          <QuestionCard key={q.id} q={q} index={i}
+            onUpdate={p => updateQuestion(q.id, p)}
+            onRemove={() => setQuestions(prev => prev.filter(x => x.id !== q.id))}
+          />
+        ))}
+
+        <button type="button"
+          onClick={() => setQuestions(prev => [...prev, defaultQuestion()])}
+          className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-[--border] hover:border-yellow-400/50 text-[--text-muted] hover:text-yellow-400 font-semibold text-sm py-3 rounded-2xl transition-colors">
+          + Ajouter une question
+        </button>
+      </div>
 
       {error && <p className="text-red-400 text-sm bg-red-400/10 rounded-xl px-4 py-2">{error}</p>}
 
       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
         type="submit" disabled={loading}
         className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black font-bold text-sm py-3 rounded-xl transition-colors">
-        {loading ? "Envoi en cours…" : moments.length > 1 ? `🚀 Soumettre ${moments.length} questions` : "🚀 Soumettre la référence"}
+        {loading ? "Envoi en cours…" : questions.length > 1 ? `🚀 Soumettre ${questions.length} questions` : "🚀 Soumettre la référence"}
       </motion.button>
     </form>
   );
