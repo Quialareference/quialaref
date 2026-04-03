@@ -27,13 +27,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const hostname = headersList.get("x-hostname") ?? headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
   const isWikiDomain = hostname.includes("wikiref");
   const isWikiPath = pathname.startsWith("/wiki");
+  const isSubmitPath = pathname.startsWith("/submit");
 
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased min-h-screen`}>
         <Providers>
-          {isWikiDomain && !isWikiPath && <WikiHeader />}
-          {!isWikiDomain && !isWikiPath && <Header />}
+          {isWikiDomain && !isWikiPath && !isSubmitPath && <WikiHeader />}
+          {!isWikiDomain && !isWikiPath && !isSubmitPath && <Header />}
           {children}
         </Providers>
       </body>
