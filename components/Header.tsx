@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
@@ -31,7 +32,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-[--border] bg-[--bg]/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-[--border] bg-[--header-bg] backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between py-2.5 px-4">
 
           {/* Mobile: hamburger — Desktop: left buttons */}
@@ -111,10 +112,20 @@ export function Header() {
       </header>
 
       {/* Mobile menu overlay */}
+      <AnimatePresence>
       {menuOpen && (
         <div className="fixed inset-0 z-[100] sm:hidden">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
-          <div className="absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[--bg-card] border-r border-[--border] flex flex-col p-6 gap-4 shadow-2xl">
+          <motion.div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setMenuOpen(false)}
+          />
+          <motion.div
+            className="absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[--bg-card] border-r border-[--border] flex flex-col p-6 gap-4 shadow-2xl"
+            initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
+            transition={{ type: "tween", duration: 0.25 }}
+          >
             {/* Close + logo */}
             <div className="flex items-center justify-between mb-2">
               <Image src="/logo.png" alt="Qui a la réf ?" width={120} height={42} className="h-10 w-auto" />
@@ -136,7 +147,7 @@ export function Header() {
               <Link
                 href="/settings"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+                className="flex items-center justify-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
               >
                 {userIcon}
                 <span className="truncate">{session.user.username ?? session.user.email?.split("@")[0]}</span>
@@ -145,7 +156,7 @@ export function Header() {
               <Link
                 href="/auth/signin"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+                className="flex items-center justify-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
               >
                 {userIcon}
                 Se connecter
@@ -171,9 +182,10 @@ export function Header() {
             >
               Parcourir le wiki
             </a>
-          </div>
+          </motion.div>
         </div>
       )}
+      </AnimatePresence>
 
       {/* Confirm modal — in-game only */}
       {showConfirm && (

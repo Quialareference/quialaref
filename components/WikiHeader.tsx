@@ -15,7 +15,7 @@ export async function WikiHeader() {
   );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[--border] bg-[--bg]/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-[--border] bg-[--header-bg] backdrop-blur-md">
       <div className="max-w-5xl mx-auto flex items-center justify-between py-2.5 px-4">
 
         {/* Left */}

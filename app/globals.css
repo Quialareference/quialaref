@@ -8,6 +8,7 @@
     --bg: #111111;
     --bg-card: #1a1a1a;
     --bg-input: #222222;
+    --header-bg: rgba(17, 17, 17, 0.80);
     --border: rgba(255,255,255,0.10);
     --border-hover: rgba(255,255,255,0.20);
     --text: #f0f0f0;
@@ -20,6 +21,7 @@
     --bg: #f4f4f5;
     --bg-card: #ffffff;
     --bg-input: #f0f0f1;
+    --header-bg: rgba(244, 244, 245, 0.80);
     --border: rgba(0,0,0,0.08);
     --border-hover: rgba(0,0,0,0.16);
     --text: #111111;
@@ -36,6 +38,11 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     transition: background-color 0.2s, color 0.2s;
   }
+}
+
+/* ── Prevent iOS zoom on input focus ── */
+@media (max-width: 639px) {
+  input, select, textarea { font-size: 16px !important; }
 }
 
 /* ── Scrollbar ── */

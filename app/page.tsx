@@ -110,20 +110,20 @@ export default function HomePage() {
             <div className="flex-1 h-px bg-[--border]" />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <input
               type="text"
               placeholder="Code du salon"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-              className="flex-1 bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-[--text-subtle] uppercase tracking-widest font-mono text-sm focus:ring-2 focus:ring-[--border-hover] transition-all"
+              className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-[--text-subtle] uppercase tracking-widest font-mono text-sm focus:ring-2 focus:ring-[--border-hover] transition-all"
             />
             <motion.button
               whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
               onClick={() => handleJoin()}
               disabled={loading}
-              className="bg-[--bg-input] border border-[--border] hover:border-[--border-hover] disabled:opacity-50 text-[--text] font-semibold text-sm px-5 py-2.5 rounded-xl transition-all"
+              className="w-full bg-[--bg-input] border border-[--border] hover:border-[--border-hover] disabled:opacity-50 text-[--text] font-semibold text-sm px-5 py-2.5 rounded-xl transition-all"
             >
               Rejoindre
             </motion.button>

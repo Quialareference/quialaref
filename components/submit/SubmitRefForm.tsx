@@ -1,186 +1,429 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
-async function uploadFile(file: File): Promise<{ url: string; path: string; mediaType: "image" | "video" }> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: formData });
-  if (!res.ok) {
-    const d = await res.json();
-    throw new Error(d.error ?? "Erreur upload");
-  }
-  return res.json();
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type QType = "blank" | "open" | "closed";
+
+interface Moment {
+  id: string;
+  passage: string;       // selected text from transcript
+  context: string;
+  expanded: boolean;
+  qType: QType;
+  qText: string;         // question sentence
+  // blank / open
+  selectedIndices: Set<number>;
+  falseProps: string[];
+  openAnswer: string;
+  // closed
+  closedAnswer: "Oui" | "Non";
 }
 
-// Splits a sentence into tokens (words + spaces/punctuation) for word selection
-function tokenize(sentence: string): string[] {
-  return sentence.split(/(\s+)/).filter(Boolean);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+let _uid = 0;
+const uid = () => `m${++_uid}`;
+
+function tokenize(s: string): string[] {
+  return s.split(/(\s+)/).filter(Boolean);
+}
+function isWord(t: string) { return /\S/.test(t); }
+
+function defaultMoment(passage: string): Moment {
+  return {
+    id: uid(), passage, context: "", expanded: true,
+    qType: "blank", qText: passage,
+    selectedIndices: new Set(), falseProps: ["", "", "", "", "", ""],
+    openAnswer: "", closedAnswer: "Oui",
+  };
 }
 
-function isWord(token: string): boolean {
-  return /\S/.test(token);
+function getYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
+  } catch {}
+  return null;
 }
+
+async function uploadFile(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Erreur upload");
+  return res.json() as Promise<{ url: string; path: string; mediaType: "image" | "video" }>;
+}
+
+// ─── BlankBuilder ─────────────────────────────────────────────────────────────
+
+function BlankBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
+  const tokens = tokenize(m.qText);
+  const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
+  const consecutive = sorted.length > 0 && sorted.every(
+    (idx, i) => i === 0 || tokens.slice(sorted[i - 1] + 1, idx).every(t => !isWord(t))
+  );
+  const answer = consecutive && sorted.length > 0 ? sorted.map(i => tokens[i]).join(" ") : null;
+  const preview = sorted.length > 0
+    ? tokens.map((t, i) => m.selectedIndices.has(i) ? null : t)
+        .reduce<string[]>((acc, t) => {
+          if (t === null) { if (acc[acc.length - 1] !== "___") acc.push("___"); }
+          else acc.push(t);
+          return acc;
+        }, []).join("")
+    : m.qText;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Phrase</label>
+        <textarea value={m.qText} rows={2} placeholder="La phrase contenant la bonne réponse"
+          onChange={e => onChange({ qText: e.target.value.slice(0, 200), selectedIndices: new Set() })}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
+        />
+      </div>
+      {m.qText.trim() && (
+        <div>
+          <p className="text-[--text-muted] text-xs mb-2">Clique sur le(s) mot(s) = bonne réponse :</p>
+          <div className="flex flex-wrap gap-1">
+            {tokens.map((t, i) =>
+              isWord(t) ? (
+                <button key={i} type="button" onClick={() => {
+                  const next = new Set(m.selectedIndices);
+                  next.has(i) ? next.delete(i) : next.add(i);
+                  onChange({ selectedIndices: next });
+                }}
+                  className={`px-2 py-1 rounded-lg text-sm font-medium transition-all ${m.selectedIndices.has(i) ? "bg-yellow-400 text-gray-900 font-bold" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+                  {t}
+                </button>
+              ) : <span key={i} className="text-[--text-muted] text-sm py-1">{t}</span>
+            )}
+          </div>
+          {!consecutive && m.selectedIndices.size > 0 && <p className="text-orange-400 text-xs mt-1">Les mots doivent être consécutifs.</p>}
+          {answer && <p className="text-[--text-muted] text-xs mt-2">Bonne réponse : <span className="text-yellow-400 font-semibold">{answer}</span> — Aperçu : <em className="text-[--text-muted]">{preview}</em></p>}
+        </div>
+      )}
+      <div>
+        <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Propositions fausses <span className="normal-case font-normal">(3 min)</span></p>
+        <div className="grid grid-cols-2 gap-2">
+          {m.falseProps.map((v, i) => (
+            <input key={i} type="text" placeholder={i < 3 ? "Requis" : "Optionnel"} value={v}
+              onChange={e => { const next = [...m.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
+              className="bg-[--bg-input] border border-[--border] rounded-xl px-3 py-2 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── OpenBuilder ──────────────────────────────────────────────────────────────
+
+function OpenBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Question</label>
+        <textarea value={m.qText} rows={2} placeholder="Ex: Comment s'appelle ce personnage ?"
+          onChange={e => onChange({ qText: e.target.value.slice(0, 200) })}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Bonne réponse</label>
+        <input type="text" value={m.openAnswer} placeholder="La réponse correcte"
+          onChange={e => onChange({ openAnswer: e.target.value.slice(0, 80) })}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
+        />
+      </div>
+      <div>
+        <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Propositions fausses <span className="normal-case font-normal">(3 min)</span></p>
+        <div className="grid grid-cols-2 gap-2">
+          {m.falseProps.slice(0, 6).map((v, i) => (
+            <input key={i} type="text" placeholder={i < 3 ? "Requis" : "Optionnel"} value={v}
+              onChange={e => { const next = [...m.falseProps]; next[i] = e.target.value.slice(0, 60); onChange({ falseProps: next }); }}
+              className="bg-[--bg-input] border border-[--border] rounded-xl px-3 py-2 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ClosedBuilder ────────────────────────────────────────────────────────────
+
+function ClosedBuilder({ m, onChange }: { m: Moment; onChange: (p: Partial<Moment>) => void }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Question</label>
+        <textarea value={m.qText} rows={2} placeholder="Ex: Ce mème vient bien de Twitter ?"
+          onChange={e => onChange({ qText: e.target.value.slice(0, 200) })}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
+        />
+      </div>
+      <div>
+        <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Bonne réponse</p>
+        <div className="flex gap-2">
+          {(["Oui", "Non"] as const).map(v => (
+            <button key={v} type="button" onClick={() => onChange({ closedAnswer: v })}
+              className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${m.closedAnswer === v ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MomentCard ───────────────────────────────────────────────────────────────
+
+const Q_TYPES: { key: QType; label: string; desc: string }[] = [
+  { key: "blank",  label: "Texte à trou",    desc: "Complète la phrase" },
+  { key: "open",   label: "Question ouverte", desc: "4 choix libres" },
+  { key: "closed", label: "Oui / Non",        desc: "Réponse binaire" },
+];
+
+function MomentCard({ m, index, onUpdate, onRemove }: {
+  m: Moment; index: number;
+  onUpdate: (p: Partial<Moment>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="bg-[--bg-card] border border-[--border] rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
+        onClick={() => onUpdate({ expanded: !m.expanded })}>
+        <span className="text-[--text-muted] text-xs font-mono w-5">#{index + 1}</span>
+        <p className="flex-1 text-[--text] text-sm truncate italic text-[--text-muted]">&ldquo;{m.passage}&rdquo;</p>
+        <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }}
+          className="text-red-400/50 hover:text-red-400 text-xs transition-colors mr-1">✕</button>
+        <span className="text-[--text-muted] text-xs">{m.expanded ? "▲" : "▼"}</span>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {m.expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-[--border] px-4 py-4 flex flex-col gap-4">
+              {/* Context */}
+              <div>
+                <label className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold block mb-1.5">Contexte <span className="normal-case font-normal">(optionnel)</span></label>
+                <input type="text" value={m.context} placeholder="Ex: Extrait de la vidéo à 0:42"
+                  onChange={e => onUpdate({ context: e.target.value.slice(0, 150) })}
+                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
+                />
+              </div>
+
+              {/* Question type selector */}
+              <div>
+                <p className="text-[--text-muted] text-xs uppercase tracking-widest font-semibold mb-2">Type de question</p>
+                <div className="flex gap-2">
+                  {Q_TYPES.map(({ key, label }) => (
+                    <button key={key} type="button" onClick={() => onUpdate({ qType: key })}
+                      className={`flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-colors text-center ${m.qType === key ? "bg-yellow-400 text-gray-900" : "bg-white/10 text-[--text] hover:bg-white/20"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Builder */}
+              {m.qType === "blank"  && <BlankBuilder  m={m} onChange={onUpdate} />}
+              {m.qType === "open"   && <OpenBuilder   m={m} onChange={onUpdate} />}
+              {m.qType === "closed" && <ClosedBuilder m={m} onChange={onUpdate} />}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Main form ────────────────────────────────────────────────────────────────
 
 export function SubmitRefForm() {
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [questionText, setQuestionText] = useState("");
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
-  const [falseProps, setFalseProps] = useState(["", "", "", "", "", ""]);
-  const [file, setFile] = useState<File | null>(null);
+  const [url, setUrl]             = useState("");
+  const [videoId, setVideoId]     = useState<string | null>(null);
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState("");
+  const [fetching, setFetching]   = useState(false);
+
+  const [file, setFile]           = useState<File | null>(null);
+  const [preview, setPreview]     = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
-  const [preview, setPreview] = useState<string | null>(null);
+  const [usingThumb, setUsingThumb] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
 
-  const [youtubeThumbnail, setYoutubeThumbnail] = useState<string | null>(null);
-  const [youtubeTranscript, setYoutubeTranscript] = useState<string | null>(null);
-  const [youtubeFetching, setYoutubeFetching] = useState(false);
-  const [usingThumbnailAsMedia, setUsingThumbnailAsMedia] = useState(false);
-  const youtubeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [title, setTitle]         = useState("");
+  const [moments, setMoments]     = useState<Moment[]>([]);
+  const [highlight, setHighlight] = useState<{ start: number; end: number } | null>(null);
 
+  const [loading, setLoading]     = useState(false);
+  const [success, setSuccess]     = useState(false);
+  const [error, setError]         = useState("");
+
+  const transcriptRef = useRef<HTMLTextAreaElement>(null);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-fetch on URL change
   useEffect(() => {
-    if (youtubeDebounce.current) clearTimeout(youtubeDebounce.current);
-    setYoutubeThumbnail(null);
-    setYoutubeTranscript(null);
-    setUsingThumbnailAsMedia(false);
-    if (!youtubeUrl.trim()) return;
-    youtubeDebounce.current = setTimeout(async () => {
-      setYoutubeFetching(true);
+    if (debounce.current) clearTimeout(debounce.current);
+    setThumbnail(null); setTranscript(""); setVideoId(null);
+    if (!url.trim()) return;
+    const id = getYoutubeId(url);
+    if (!id) return;
+    setVideoId(id);
+    debounce.current = setTimeout(async () => {
+      setFetching(true);
       try {
-        const res = await fetch(`/api/youtube/info?url=${encodeURIComponent(youtubeUrl)}`);
+        const res = await fetch(`/api/youtube/info?url=${encodeURIComponent(url)}`);
         if (res.ok) {
           const data = await res.json();
-          setYoutubeThumbnail(data.thumbnailUrl ?? null);
-          setYoutubeTranscript(data.transcript ?? null);
+          setThumbnail(data.thumbnailUrl ?? null);
+          setTranscript(data.transcript ?? "");
         }
       } catch {}
-      setYoutubeFetching(false);
+      setFetching(false);
     }, 800);
-  }, [youtubeUrl]);
-
-  const tokens = tokenize(questionText);
-  const wordTokens = tokens.map((t, i) => ({ token: t, index: i, isWord: isWord(t) }));
-
-  // Sorted selected word indices (consecutive check)
-  const sortedSelected = Array.from(selectedIndices).sort((a, b) => a - b);
-  const isConsecutive = sortedSelected.length > 0 && sortedSelected.every(
-    (idx, i) => i === 0 || tokens.slice(sortedSelected[i - 1] + 1, idx).every(t => !isWord(t))
-  );
-  const correctAnswer = isConsecutive && sortedSelected.length > 0
-    ? sortedSelected.map(i => tokens[i]).join(" ")
-    : null;
-
-  // Build question preview: replace selected span with ___
-  const questionPreview = sortedSelected.length > 0
-    ? tokens.map((t, i) => selectedIndices.has(i) ? null : t)
-        .reduce<string[]>((acc, t, i) => {
-          if (t === null) {
-            if (acc[acc.length - 1] !== "___") acc.push("___");
-          } else {
-            acc.push(t);
-          }
-          return acc;
-        }, [])
-        .join("")
-    : questionText;
-
-  function toggleWord(index: number) {
-    setSelectedIndices(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }
+  }, [url]);
 
   function applyFile(f: File) {
-    setFile(f);
-    const isVideo = f.type.startsWith("video/");
-    setMediaType(isVideo ? "video" : "image");
+    setFile(f); setUsingThumb(false);
+    setMediaType(f.type.startsWith("video/") ? "video" : "image");
     setPreview(URL.createObjectURL(f));
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) applyFile(f);
+  function useThumbnail() {
+    if (!thumbnail) return;
+    setPreview(thumbnail); setMediaType("image");
+    setFile(null); setUsingThumb(true);
   }
 
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setIsDragging(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) applyFile(f);
+  function handleSelect() {
+    const el = transcriptRef.current;
+    if (!el) return;
+    const { selectionStart: s, selectionEnd: e } = el;
+    setHighlight(s < e ? { start: s, end: e } : null);
   }
 
-  function updateFalseProp(i: number, val: string) {
-    setFalseProps((prev) => {
-      const next = [...prev];
-      next[i] = val;
-      return next;
-    });
+  function addMoment() {
+    if (!highlight) return;
+    const text = transcript.slice(highlight.start, highlight.end).trim();
+    if (!text) return;
+    setMoments(prev => [...prev, defaultMoment(text)]);
+    setHighlight(null);
+    transcriptRef.current?.blur();
   }
 
-  function handleQuestionChange(val: string) {
-    setQuestionText(val);
-    setSelectedIndices(new Set());
+  function updateMoment(id: string, patch: Partial<Moment>) {
+    setMoments(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m));
+  }
+
+  function removeMoment(id: string) {
+    setMoments(prev => prev.filter(m => m.id !== id));
+  }
+
+  // Validate one moment before submit
+  function validateMoment(m: Moment): string | null {
+    if (!m.qText.trim()) return `Moment #${moments.indexOf(m) + 1} : question manquante.`;
+    if (m.qType === "blank") {
+      const tokens = tokenize(m.qText);
+      const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
+      const consecutive = sorted.length > 0 && sorted.every(
+        (idx, i) => i === 0 || tokens.slice(sorted[i - 1] + 1, idx).every(t => !isWord(t))
+      );
+      if (!consecutive || sorted.length === 0) return `Moment #${moments.indexOf(m) + 1} : sélectionne la bonne réponse.`;
+      if (m.falseProps.filter(p => p.trim()).length < 3) return `Moment #${moments.indexOf(m) + 1} : 3 propositions fausses minimum.`;
+    }
+    if (m.qType === "open") {
+      if (!m.openAnswer.trim()) return `Moment #${moments.indexOf(m) + 1} : bonne réponse manquante.`;
+      if (m.falseProps.filter(p => p.trim()).length < 3) return `Moment #${moments.indexOf(m) + 1} : 3 propositions fausses minimum.`;
+    }
+    return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file && !usingThumbnailAsMedia) { setError("Ajoute une image ou une vidéo."); return; }
-    if (!title.trim()) { setError("Indique le nom complet de la référence."); return; }
-    if (!questionText.trim()) { setError("Écris une question."); return; }
-    if (!correctAnswer) { setError(isConsecutive ? "Sélectionne au moins un mot comme bonne réponse." : "Les mots sélectionnés doivent être consécutifs."); return; }
-    const validFalse = falseProps.filter((p) => p.trim());
-    if (validFalse.length < 3) {
-      setError("Donne au moins 3 propositions fausses.");
-      return;
+    if (!preview && !file && !usingThumb) { setError("Ajoute une image ou une vidéo."); return; }
+    if (!title.trim()) { setError("Indique le titre de la référence."); return; }
+    if (moments.length === 0) { setError("Ajoute au moins un moment de référence."); return; }
+    for (const m of moments) {
+      const err = validateMoment(m);
+      if (err) { setError(err); return; }
     }
 
-    setLoading(true);
-    setError("");
-
+    setLoading(true); setError("");
     try {
+      // Upload media once
       let mediaUrl: string;
       let mediaPublicId: string | undefined;
       let finalMediaType: "image" | "video";
 
-      if (usingThumbnailAsMedia && youtubeThumbnail) {
-        mediaUrl = youtubeThumbnail;
-        mediaPublicId = undefined;
+      if (usingThumb && thumbnail) {
+        mediaUrl = thumbnail;
+        mediaPublicId = videoId ? `yt:${videoId}` : "yt:thumb";
         finalMediaType = "image";
       } else {
-        const uploaded = await uploadFile(file!);
-        mediaUrl = uploaded.url;
-        mediaPublicId = uploaded.path;
-        finalMediaType = uploaded.mediaType;
+        const up = await uploadFile(file!);
+        mediaUrl = up.url; mediaPublicId = up.path; finalMediaType = up.mediaType;
       }
 
-      const res = await fetch("/api/refs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          question: questionPreview.trim(),
-          correctAnswer: correctAnswer!.trim(),
-          mediaType: finalMediaType,
-          mediaUrl,
-          mediaPublicId,
-          youtubeUrl: youtubeUrl.trim() || undefined,
-          falsePropositions: validFalse,
-        }),
-      });
+      // Submit each moment as a separate ref
+      for (const m of moments) {
+        const tokens = tokenize(m.qText);
+        const sorted = Array.from(m.selectedIndices).sort((a, b) => a - b);
+        let question = m.qText;
+        let correctAnswer = "";
+        let falsePropositions: string[] = [];
 
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "Erreur lors de la soumission");
+        if (m.qType === "blank") {
+          correctAnswer = sorted.map(i => tokens[i]).join(" ");
+          // rebuild question with ___
+          question = tokens.map((t, i) => m.selectedIndices.has(i) ? null : t)
+            .reduce<string[]>((acc, t) => {
+              if (t === null) { if (acc[acc.length - 1] !== "___") acc.push("___"); }
+              else acc.push(t);
+              return acc;
+            }, []).join("");
+          falsePropositions = m.falseProps.filter(p => p.trim());
+        } else if (m.qType === "open") {
+          correctAnswer = m.openAnswer.trim();
+          falsePropositions = m.falseProps.filter(p => p.trim());
+        } else {
+          // closed
+          correctAnswer = m.closedAnswer;
+          falsePropositions = [m.closedAnswer === "Oui" ? "Non" : "Oui"];
+        }
+
+        const res = await fetch("/api/refs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title.trim(),
+            question: question.trim(),
+            correctAnswer,
+            mediaType: finalMediaType,
+            mediaUrl,
+            mediaPublicId,
+            youtubeUrl: url.trim() || undefined,
+            falsePropositions,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.error ?? "Erreur lors de la soumission");
+        }
       }
-
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -189,259 +432,159 @@ export function SubmitRefForm() {
     }
   }
 
+  function reset() {
+    setUrl(""); setVideoId(null); setThumbnail(null); setTranscript("");
+    setFile(null); setPreview(null); setUsingThumb(false);
+    setTitle(""); setMoments([]); setHighlight(null); setSuccess(false); setError("");
+  }
+
+  // ── Success screen ─────────────────────────────────────────────────────────
   if (success) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-green-500/20 border border-green-500/40 rounded-2xl p-8 text-center"
-      >
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-green-500/20 border border-green-500/40 rounded-2xl p-8 text-center">
         <p className="text-4xl mb-3">🎉</p>
-        <h2 className="text-2xl font-black text-white">Référence soumise !</h2>
-        <p className="text-white/60 mt-2">
-          Elle sera vérifiée avant d&apos;apparaître dans les parties. Merci !
-        </p>
-        <button
-          onClick={() => {
-            setSuccess(false);
-            setTitle("");
-            setQuestionText("");
-            setSelectedIndices(new Set());
-            setFalseProps(["", "", "", "", "", ""]);
-            setYoutubeUrl("");
-            setFile(null);
-            setPreview(null);
-            setYoutubeThumbnail(null);
-            setYoutubeTranscript(null);
-            setUsingThumbnailAsMedia(false);
-          }}
-          className="mt-6 text-yellow-400 hover:text-yellow-300 text-sm transition-colors"
-        >
+        <h2 className="text-2xl font-black text-[--text]">
+          {moments.length > 1 ? `${moments.length} questions soumises !` : "Référence soumise !"}
+        </h2>
+        <p className="text-[--text-muted] mt-2">Elles seront vérifiées avant d&apos;apparaître. Merci !</p>
+        <button onClick={reset} className="mt-6 text-yellow-400 hover:text-yellow-300 text-sm transition-colors">
           ➕ Soumettre une autre
         </button>
       </motion.div>
     );
   }
 
+  // ── Form ───────────────────────────────────────────────────────────────────
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
-      {/* 1. Media */}
+      {/* 1. URL YouTube / TikTok */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-4">1. Image ou vidéo de la référence</h2>
-        <label
-          className="block cursor-pointer"
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        <h2 className="text-[--text] font-bold mb-1">1. Lien YouTube <span className="text-[--text-muted] font-normal text-sm">(optionnel)</span></h2>
+        <p className="text-[--text-muted] text-sm mb-3">La miniature et la transcription seront récupérées automatiquement.</p>
+        <input type="url" placeholder="https://www.youtube.com/watch?v=..." value={url}
+          onChange={e => setUrl(e.target.value)}
+          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
+        />
+        {fetching && <p className="text-[--text-muted] text-xs mt-2 animate-pulse">Récupération en cours…</p>}
+
+        {thumbnail && !fetching && (
+          <div className="flex items-start gap-3 mt-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={thumbnail} alt="Miniature" className="w-32 rounded-lg border border-[--border] object-cover" />
+            {!preview ? (
+              <button type="button" onClick={useThumbnail}
+                className="text-yellow-400 hover:text-yellow-300 text-xs font-semibold bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/30 rounded-lg px-3 py-2 transition-colors">
+                ✓ Utiliser comme image
+              </button>
+            ) : usingThumb ? (
+              <div className="flex flex-col gap-1">
+                <span className="text-green-400 text-xs font-semibold">✓ Miniature utilisée</span>
+                <button type="button" onClick={() => { setUsingThumb(false); setPreview(null); }}
+                  className="text-[--text-muted] hover:text-[--text] text-xs transition-colors">Annuler</button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* 2. Image / Vidéo */}
+      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
+        <h2 className="text-[--text] font-bold mb-3">2. Image ou vidéo</h2>
+        <label className="block cursor-pointer"
+          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-        >
-          <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-            isDragging ? "border-yellow-400 bg-yellow-400/10" : "border-white/20 hover:border-yellow-400/50"
-          }`}>
+          onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) applyFile(f); }}>
+          <div className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors ${isDragging ? "border-yellow-400 bg-yellow-400/10" : "border-[--border] hover:border-yellow-400/50"}`}>
             {preview ? (
-              mediaType === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={preview} alt="Aperçu" className="max-h-48 mx-auto rounded-lg object-contain" />
-              ) : (
-                <video src={preview} muted playsInline className="max-h-48 mx-auto rounded-lg" controls />
-              )
+              mediaType === "image"
+                ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={preview} alt="Aperçu" className="max-h-40 mx-auto rounded-lg object-contain" />
+                : <video src={preview} muted playsInline className="max-h-40 mx-auto rounded-lg" controls />
             ) : (
-              <div className="text-white/40">
-                <p className="text-4xl mb-2">🖼️</p>
-                <p className="font-medium">{isDragging ? "Dépose ici !" : "Clique ou glisse une image / vidéo"}</p>
+              <div className="text-[--text-muted]">
+                <p className="text-3xl mb-2">🖼️</p>
+                <p className="text-sm font-medium">{isDragging ? "Dépose ici !" : "Clique ou glisse une image / vidéo"}</p>
                 <p className="text-xs mt-1">JPG, PNG, GIF, MP4, WebM — max 50 MB</p>
               </div>
             )}
           </div>
-          <input type="file" accept="image/*,video/*" onChange={handleFileChange} className="hidden" />
+          <input type="file" accept="image/*,video/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) applyFile(f); }} />
         </label>
-      </div>
-
-      {/* 1b. Lien YouTube (optionnel) */}
-      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">Lien YouTube <span className="text-white/40 font-normal text-sm">(optionnel)</span></h2>
-        <p className="text-[--text-muted] text-sm mb-3">Pour retrouver la source facilement plus tard</p>
-        <input
-          type="url"
-          placeholder="https://www.youtube.com/watch?v=..."
-          value={youtubeUrl}
-          onChange={(e) => setYoutubeUrl(e.target.value)}
-          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
-        />
-
-        {youtubeFetching && (
-          <p className="text-white/40 text-xs mt-3 animate-pulse">Récupération des infos YouTube…</p>
-        )}
-
-        {youtubeThumbnail && !youtubeFetching && (
-          <div className="mt-3">
-            <p className="text-white/50 text-xs mb-2">Miniature détectée :</p>
-            <div className="flex items-start gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={youtubeThumbnail} alt="Miniature YouTube" className="w-36 rounded-lg object-cover border border-white/10" />
-              {!usingThumbnailAsMedia && !file && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPreview(youtubeThumbnail);
-                    setMediaType("image");
-                    setFile(null);
-                    setUsingThumbnailAsMedia(true);
-                  }}
-                  className="text-yellow-400 hover:text-yellow-300 text-xs font-semibold bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/30 rounded-lg px-3 py-2 transition-colors"
-                >
-                  ✓ Utiliser cette miniature
-                </button>
-              )}
-              {usingThumbnailAsMedia && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-green-400 text-xs font-semibold">✓ Miniature utilisée comme image</span>
-                  <button
-                    type="button"
-                    onClick={() => { setUsingThumbnailAsMedia(false); setPreview(null); }}
-                    className="text-white/30 hover:text-white/60 text-xs transition-colors"
-                  >
-                    Annuler
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {youtubeTranscript && !youtubeFetching && (
-          <div className="mt-4">
-            <p className="text-white/50 text-xs mb-2">Transcription automatique :</p>
-            <textarea
-              readOnly
-              value={youtubeTranscript}
-              rows={4}
-              className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-white/50 text-xs resize-y focus:outline-none"
-            />
-          </div>
+        {preview && (
+          <button type="button" onClick={() => { setPreview(null); setFile(null); setUsingThumb(false); }}
+            className="mt-2 text-[--text-muted] hover:text-red-400 text-xs transition-colors">
+            ✕ Supprimer
+          </button>
         )}
       </div>
 
-      {/* 2. Nom de la ref */}
+      {/* 3. Titre */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">2. Nom complet de la référence</h2>
-        <p className="text-[--text-muted] text-sm mb-3">Le nom officiel/complet tel qu&apos;il est connu</p>
-        <input
-          type="text"
-          placeholder="Ex: Le Harlem Shake, Nabila, Gangnam Style…"
-          value={title}
-          onChange={(e) => setTitle(e.target.value.slice(0, 100))}
+        <h2 className="text-[--text] font-bold mb-1">3. Nom de la référence</h2>
+        <p className="text-[--text-muted] text-sm mb-3">Le nom complet tel qu&apos;il est connu</p>
+        <input type="text" placeholder="Ex: Le Harlem Shake, Nabila, Gangnam Style…" value={title}
+          onChange={e => setTitle(e.target.value.slice(0, 100))}
           className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400"
         />
       </div>
 
-      {/* 3. Question avec sélection du mot */}
+      {/* 4. Transcription + sélection de passages */}
       <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">3. La question</h2>
+        <h2 className="text-[--text] font-bold mb-1">4. Passages <span className="text-[--text-muted] font-normal text-sm">(transcription ou description)</span></h2>
         <p className="text-[--text-muted] text-sm mb-3">
-          Écris une phrase, puis clique sur le mot qui est la bonne réponse
+          Sélectionne un passage dans le texte pour créer un moment de référence.
         </p>
+        <div className="relative">
+          <textarea ref={transcriptRef} value={transcript} rows={6}
+            placeholder="La transcription sera remplie automatiquement si tu as mis un lien YouTube — ou écris ici ce que tu veux…"
+            onChange={e => setTranscript(e.target.value)}
+            onSelect={handleSelect} onMouseUp={handleSelect} onKeyUp={handleSelect}
+            className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y text-sm leading-relaxed"
+          />
+        </div>
 
-        <textarea
-          placeholder="Ex: Cette danse virale s'appelle le Harlem Shake"
-          value={questionText}
-          onChange={(e) => handleQuestionChange(e.target.value.slice(0, 200))}
-          rows={2}
-          className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none text-sm"
-        />
-
-        {/* Word selection */}
-        {questionText.trim() && (
-          <div className="mt-3">
-            <p className="text-white/40 text-xs mb-2">Clique sur le ou les mots qui forment la bonne réponse :</p>
-            <div className="flex flex-wrap gap-1">
-              {wordTokens.map(({ token, index, isWord: word }) =>
-                word ? (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => toggleWord(index)}
-                    className={`px-2 py-1 rounded-lg text-sm font-medium transition-all ${
-                      selectedIndices.has(index)
-                        ? "bg-yellow-400 text-gray-900 font-bold"
-                        : "bg-white/10 text-white hover:bg-white/20"
-                    }`}
-                  >
-                    {token}
-                  </button>
-                ) : (
-                  <span key={index} className="text-white/30 text-sm py-1">{token}</span>
-                )
-              )}
-            </div>
-
-            {!isConsecutive && selectedIndices.size > 0 && (
-              <p className="text-orange-400 text-xs mt-2">Les mots doivent être consécutifs dans la phrase.</p>
-            )}
-
-            {/* Preview */}
-            <div className="mt-3 bg-[--bg-input] rounded-xl px-4 py-3 border border-[--border]">
-              <p className="text-white/40 text-xs mb-1">Aperçu de la question en jeu :</p>
-              <p className="text-[--text] text-sm font-medium">
-                {correctAnswer ? (
-                  questionPreview.split("___").map((part, i, arr) => (
-                    <span key={i}>
-                      {part}
-                      {i < arr.length - 1 && (
-                        <span className="bg-yellow-400/20 text-yellow-300 font-bold rounded px-1">___</span>
-                      )}
-                    </span>
-                  ))
-                ) : selectedIndices.size > 0 ? (
-                  <span className="text-orange-400/70 italic text-xs">Sélectionne des mots consécutifs</span>
-                ) : (
-                  <span className="text-white/40 italic">Sélectionne des mots ci-dessus</span>
-                )}
+        <AnimatePresence>
+          {highlight && (
+            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="mt-3 flex items-center gap-3 bg-yellow-400/10 border border-yellow-400/30 rounded-xl px-4 py-3">
+              <p className="flex-1 text-yellow-300 text-sm italic truncate">
+                &ldquo;{transcript.slice(highlight.start, highlight.end).trim()}&rdquo;
               </p>
-              {correctAnswer && (
-                <p className="text-white/40 text-xs mt-2">
-                  Bonne réponse : <span className="text-yellow-400 font-semibold">{correctAnswer}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+              <button type="button" onClick={addMoment}
+                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+                + Ajouter comme moment
+              </button>
+              <button type="button" onClick={() => setHighlight(null)}
+                className="text-yellow-400/60 hover:text-yellow-400 text-xs">✕</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* 4. False propositions */}
-      <div className="bg-[--bg-card] rounded-2xl p-5 border border-[--border]">
-        <h2 className="text-[--text] font-bold mb-1">4. Propositions fausses</h2>
-        <p className="text-[--text-muted] text-sm mb-4">
-          3 à 6 mots/noms qui pourraient sembler vrais — le jeu en pioche 3 au hasard
-        </p>
+      {/* 5. Moments */}
+      {moments.length > 0 && (
         <div className="flex flex-col gap-3">
-          {falseProps.map((val, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-white/30 text-sm w-4">{i + 1}.</span>
-              <input
-                type="text"
-                placeholder={i < 3 ? "Requis" : "Optionnel"}
-                value={val}
-                onChange={(e) => updateFalseProp(i, e.target.value.slice(0, 60))}
-                className="flex-1 bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2 text-[--text] placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm"
-              />
-            </div>
+          <div className="flex items-center justify-between">
+            <h2 className="text-[--text] font-bold">5. Moments de référence</h2>
+            <span className="text-[--text-muted] text-xs">{moments.length} moment{moments.length > 1 ? "s" : ""}</span>
+          </div>
+          {moments.map((m, i) => (
+            <MomentCard key={m.id} m={m} index={i}
+              onUpdate={p => updateMoment(m.id, p)}
+              onRemove={() => removeMoment(m.id)}
+            />
           ))}
         </div>
-      </div>
-
-      {error && (
-        <p className="text-red-400 text-sm bg-red-400/10 rounded-xl px-4 py-2">{error}</p>
       )}
 
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.97 }}
-        type="submit"
-        disabled={loading}
-        className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black font-bold text-sm py-3 rounded-xl transition-colors"
-      >
-        {loading ? "Envoi en cours..." : "🚀 Soumettre la référence"}
+      {error && <p className="text-red-400 text-sm bg-red-400/10 rounded-xl px-4 py-2">{error}</p>}
+
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+        type="submit" disabled={loading}
+        className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black font-bold text-sm py-3 rounded-xl transition-colors">
+        {loading ? "Envoi en cours…" : moments.length > 1 ? `🚀 Soumettre ${moments.length} questions` : "🚀 Soumettre la référence"}
       </motion.button>
     </form>
   );

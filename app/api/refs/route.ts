@@ -17,12 +17,12 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { title, question, correctAnswer, mediaType, mediaUrl, mediaPublicId, thumbnailUrl, youtubeUrl, falsePropositions } = body;
 
-  if (!title || !question || !correctAnswer || !mediaType || !mediaUrl || !mediaPublicId) {
+  if (!title || !question || !correctAnswer || !mediaType || !mediaUrl) {
     return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
   }
 
-  if (!Array.isArray(falsePropositions) || falsePropositions.length < 3) {
-    return NextResponse.json({ error: "Au moins 3 propositions fausses requises" }, { status: 400 });
+  if (!Array.isArray(falsePropositions) || falsePropositions.length < 1) {
+    return NextResponse.json({ error: "Au moins 1 proposition fausse requise" }, { status: 400 });
   }
 
   const ref = await createRef({

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface WikiMobileMenuProps {
@@ -32,10 +33,20 @@ export function WikiMobileMenu({ username, isLoggedIn }: WikiMobileMenuProps) {
         <span className="block w-5 h-0.5 bg-[--text]" />
       </button>
 
+      <AnimatePresence>
       {menuOpen && (
         <div className="fixed inset-0 z-[100] sm:hidden">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
-          <div className="absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[--bg-card] border-r border-[--border] flex flex-col p-6 gap-4 shadow-2xl">
+          <motion.div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setMenuOpen(false)}
+          />
+          <motion.div
+            className="absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[--bg-card] border-r border-[--border] flex flex-col p-6 gap-4 shadow-2xl"
+            initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
+            transition={{ type: "tween", duration: 0.25 }}
+          >
             {/* Close + logo */}
             <div className="flex items-center justify-between mb-2">
               <Image src="/logo-wiki.png" alt="Wikiref" width={120} height={42} className="h-10 w-auto" />
@@ -57,7 +68,7 @@ export function WikiMobileMenu({ username, isLoggedIn }: WikiMobileMenuProps) {
               <Link
                 href="/settings"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+                className="flex items-center justify-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
               >
                 {userIcon}
                 <span className="truncate">{username ?? "Mon compte"}</span>
@@ -66,7 +77,7 @@ export function WikiMobileMenu({ username, isLoggedIn }: WikiMobileMenuProps) {
               <Link
                 href="/auth/signin"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
+                className="flex items-center justify-center gap-2 text-sm font-bold bg-white text-gray-900 hover:bg-yellow-300 transition-colors px-4 py-3 rounded-xl"
               >
                 {userIcon}
                 Se connecter
@@ -90,9 +101,10 @@ export function WikiMobileMenu({ username, isLoggedIn }: WikiMobileMenuProps) {
             >
               🎮 Jouer
             </a>
-          </div>
+          </motion.div>
         </div>
       )}
+      </AnimatePresence>
     </>
   );
 }
