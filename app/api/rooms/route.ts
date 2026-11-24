@@ -2,34 +2,43 @@ import { NextResponse } from "next/server";
 import { createRoom, getActiveRooms, updateRoomStatus } from "@/lib/db/queries/rooms";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
+const EMPTY_ROOM_GRACE_MS = 30_000;
 
 export async function GET() {
   try {
     const rooms = await getActiveRooms();
+    const now = Date.now();
 
-    // Check PartyKit for real player count, kill empty rooms
     const results = await Promise.allSettled(
       rooms.map(async (room) => {
+        // Give the creator enough time to navigate to the room and open the
+        // websocket before considering a brand-new room abandoned.
+        if (now - room.createdAt.getTime() < EMPTY_ROOM_GRACE_MS) return room;
+
         try {
           const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
           const res = await fetch(`${protocol}://${PARTYKIT_HOST}/parties/main/${room.code}`, {
             signal: AbortSignal.timeout(2000),
           });
+
           if (res.ok) {
-            const data = await res.json() as { playerCount: number; phase: string };
+            const data = await res.json() as { playerCount: number };
             if (data.playerCount === 0) {
               await updateRoomStatus(room.id, "finished");
               return null;
             }
           }
-        } catch {}
+        } catch {
+          // Keep the room visible if PartyKit is temporarily unreachable.
+        }
+
         return room;
       })
     );
 
-    const active = results
-      .filter((r) => r.status === "fulfilled" && r.value !== null)
-      .map((r) => (r as PromiseFulfilledResult<typeof rooms[0]>).value);
+    const active = results.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : []
+    );
 
     return NextResponse.json(active);
   } catch {

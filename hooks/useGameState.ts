@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useReducer } from "react";
 import usePartySocket from "partysocket/react";
 import type { ClientMessage, ServerMessage, GameSettings } from "@/types/messages";
 import type { GameState, PlayerInfo, RevealPayload, ScoreEntry } from "@/types/game";
@@ -98,17 +98,14 @@ interface UseGameStateOptions {
 
 export function useGameState({ roomCode, clientId, pseudonym, userId, host, onKicked }: UseGameStateOptions) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const hasJoined = useRef(false);
 
   const socket = usePartySocket({
     host,
     room: roomCode,
     onOpen() {
-      if (!hasJoined.current) {
-        hasJoined.current = true;
-        const joinMsg: ClientMessage = { type: "JOIN", pseudonym, userId, clientId };
-        socket.send(JSON.stringify(joinMsg));
-      }
+      // A reconnect creates a new server-side connection, so it must join again.
+      const joinMsg: ClientMessage = { type: "JOIN", pseudonym, userId, clientId };
+      socket.send(JSON.stringify(joinMsg));
     },
     onMessage(evt) {
       const msg = JSON.parse(evt.data) as ServerMessage;

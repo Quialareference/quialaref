@@ -151,6 +151,10 @@ export default class GameRoom implements Party.Server {
     const player = this.state.players.get(clientId);
     if (!player) return;
 
+    // Ignore the close event from a connection that has already been replaced
+    // by a reconnect. The replacement remains the player's active connection.
+    if (player.connectionId !== conn.id) return;
+
     if (this.state.phase === "lobby") {
       // En lobby : retrait immédiat
       this.removePlayer(clientId);
@@ -255,6 +259,9 @@ export default class GameRoom implements Party.Server {
     // Reconnection
     const existing = this.state.players.get(clientId);
     if (existing) {
+      if (existing.connectionId && existing.connectionId !== conn.id) {
+        this.state.connections.delete(existing.connectionId);
+      }
       existing.connectionId = conn.id;
       this.state.connections.set(conn.id, clientId);
       conn.send(JSON.stringify({
