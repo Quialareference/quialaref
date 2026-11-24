@@ -235,8 +235,16 @@ export default function WikiRefPage() {
             <div className="bg-[--bg-card] border border-[--border] rounded-2xl p-4 mb-4">
               <p className="text-[--text-muted] text-xs uppercase tracking-widest mb-2">Question en jeu</p>
               <p className="text-[--text] font-semibold">
-                {ref.question.replace("___", <span className="text-yellow-400 font-black">___</span> as unknown as string)}
-                {" "}<span className="text-yellow-400 font-black">{ref.correctAnswer}</span>
+                {ref.question.split("___").map((part, index, parts) => (
+                  <span key={index}>
+                    {part}
+                    {index < parts.length - 1 && (
+                      <span className="inline-block min-w-16 border-b-2 border-yellow-400 mx-1 align-baseline" aria-label="mot manquant">
+                        &nbsp;
+                      </span>
+                    )}
+                  </span>
+                ))}
               </p>
             </div>
           )}
