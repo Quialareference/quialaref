@@ -306,7 +306,7 @@ export default function WikiRefPage() {
               ) : ref.mediaType === "image" ? (
                 <Image src={ref.mediaUrl} alt={ref.title} fill className="object-contain" />
               ) : (
-                <video src={ref.mediaUrl} muted playsInline loop autoPlay className="w-full h-full object-contain" poster={ref.thumbnailUrl ?? undefined} />
+                <video src={ref.mediaUrl} controls muted playsInline loop autoPlay className="w-full h-full object-contain" poster={ref.thumbnailUrl ?? undefined} />
               )}
             </div>
             <div className="p-4 flex flex-col gap-2 text-sm">
