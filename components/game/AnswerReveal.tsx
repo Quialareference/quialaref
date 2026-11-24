@@ -19,7 +19,7 @@ export function AnswerReveal({ question, reveal, myAnswer }: AnswerRevealProps) 
 
   function getButtonState(option: Option) {
     if (option === reveal.correctOption) return "revealed-correct";
-    if (option === myAnswer && option !== reveal.correctOption) return "revealed-wrong";
+    if (option === myAnswer && option !== reveal.correctOption) return "revealed-selected-wrong";
     return "revealed-wrong";
   }
 

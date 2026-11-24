@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import confetti from "canvas-confetti";
 import type { ScoreEntry } from "@/types/game";
 import type { GameSettings } from "@/types/messages";
 
@@ -22,6 +23,28 @@ export function GameOver({ scores, myClientId, isHost, onRestart, settings, onSe
   const sorted = [...scores].sort((a, b) => b.score - a.score);
   const myRank = sorted.findIndex((s) => s.clientId === myClientId) + 1;
   const winner = sorted[0];
+  const iAmWinner = winner?.clientId === myClientId;
+
+  // Celebrate the winner: a burst for everyone, and a longer shower from both
+  // sides on the winner's own screen.
+  useEffect(() => {
+    if (!winner) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const colors = ["#facc15", "#ffffff", "#22c55e", "#3b82f6", "#ef4444"];
+    confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 }, colors });
+
+    if (!iAmWinner) return;
+    const end = Date.now() + 2_500;
+    let frame = 0;
+    const tick = () => {
+      confetti({ particleCount: 4, angle: 60, spread: 60, origin: { x: 0, y: 0.7 }, colors });
+      confetti({ particleCount: 4, angle: 120, spread: 60, origin: { x: 1, y: 0.7 }, colors });
+      if (Date.now() < end) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [winner?.clientId, iAmWinner]);
 
   return (
     <div className="flex flex-col items-center gap-6 py-8 px-4 max-w-lg mx-auto text-center">

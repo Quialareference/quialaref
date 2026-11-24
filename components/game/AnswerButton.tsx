@@ -12,7 +12,7 @@ interface AnswerButtonProps {
   text: string;
   onClick: () => void;
   disabled: boolean;
-  state: "idle" | "selected" | "revealed-correct" | "revealed-wrong";
+  state: "idle" | "selected" | "revealed-correct" | "revealed-wrong" | "revealed-selected-wrong";
 }
 
 export function AnswerButton({ option, text, onClick, disabled, state }: AnswerButtonProps) {
@@ -21,6 +21,7 @@ export function AnswerButton({ option, text, onClick, disabled, state }: AnswerB
     selected: "bg-white/25 border-white/50 text-white ring-2 ring-white/40",
     "revealed-correct": "bg-green-500/30 border-green-400/60 text-green-300",
     "revealed-wrong": "bg-white/5 border-white/5 text-white/30",
+    "revealed-selected-wrong": "bg-red-500/30 border-red-400/60 text-red-300",
   }[state];
 
   return (
@@ -30,7 +31,7 @@ export function AnswerButton({ option, text, onClick, disabled, state }: AnswerB
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "relative flex items-center gap-3 w-full rounded-xl px-4 py-3 font-semibold text-left border",
+        "relative flex items-center gap-3 w-full rounded-xl px-4 py-4 font-semibold text-left border",
         "transition-all duration-200 cursor-pointer disabled:cursor-default",
         stateClasses
       )}
@@ -39,6 +40,7 @@ export function AnswerButton({ option, text, onClick, disabled, state }: AnswerB
       <span className="text-sm leading-tight break-words flex-1">{text}</span>
       {state === "selected" && <span className="ml-auto text-sm opacity-60">✓</span>}
       {state === "revealed-correct" && <span className="ml-auto text-base">✓</span>}
+      {state === "revealed-selected-wrong" && <span className="ml-auto text-base">✗</span>}
     </motion.button>
   );
 }

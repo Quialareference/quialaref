@@ -41,7 +41,7 @@ export function QuestionCard({ question, myAnswer, answeredCount, totalPlayers, 
       return myAnswer === option ? "selected" : "idle";
     }
     if (option === reveal!.correctOption) return "revealed-correct";
-    if (option === myAnswer) return "revealed-wrong";
+    if (option === myAnswer) return "revealed-selected-wrong";
     return "revealed-wrong";
   }
 
