@@ -1,4 +1,5 @@
-import type * as Party from "partykit/server";
+import { routePartykitRequest, Server } from "partyserver";
+import type { Connection } from "partyserver";
 import { calculatePoints } from "../lib/scoring";
 import { buildQuestionOptions } from "../lib/proposition-selector";
 import type { ClientMessage, ServerMessage, GameSettings } from "../types/messages";
@@ -38,6 +39,11 @@ interface RoundRecord {
   correctOption: "a" | "b" | "c" | "d";
 }
 
+export interface Env {
+  Main: DurableObjectNamespace<GameRoom>;
+  NEXTJS_URL: string;
+}
+
 type GamePhase = "lobby" | "question" | "reveal" | "finished";
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -66,8 +72,12 @@ interface GameRoomState {
   roundRecords: RoundRecord[];
 }
 
-export default class GameRoom implements Party.Server {
-  private state: GameRoomState = {
+export class GameRoom extends Server<Env> {
+  // Game state lives in memory and relies on setTimeout, so the room must stay
+  // awake while players are connected.
+  static options = { hibernate: false };
+
+  private game: GameRoomState = {
     roomId: null,
     phase: "lobby",
     hostClientId: null,
@@ -85,32 +95,30 @@ export default class GameRoom implements Party.Server {
     roundRecords: [],
   };
 
-  constructor(readonly room: Party.Room) {}
-
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  private broadcast(msg: ServerMessage, exclude?: string) {
+  private broadcastMsg(msg: ServerMessage, exclude?: string) {
     const data = JSON.stringify(msg);
-    for (const conn of this.room.getConnections()) {
+    for (const conn of this.getConnections()) {
       if (conn.id !== exclude) conn.send(data);
     }
   }
 
-  private send(connectionId: string, msg: ServerMessage) {
-    this.room.getConnection(connectionId)?.send(JSON.stringify(msg));
+  private sendTo(connectionId: string, msg: ServerMessage) {
+    this.getConnection(connectionId)?.send(JSON.stringify(msg));
   }
 
   private broadcastLobby() {
-    this.broadcast({
+    this.broadcastMsg({
       type: "LOBBY_UPDATE",
       players: this.getPlayerInfos(),
-      hostClientId: this.state.hostClientId,
-      settings: this.state.settings,
+      hostClientId: this.game.hostClientId,
+      settings: this.game.settings,
     });
   }
 
   private getPlayerInfos(): PlayerInfo[] {
-    return Array.from(this.state.players.values())
+    return Array.from(this.game.players.values())
       .map((p) => ({
         clientId: p.clientId,
         pseudonym: p.pseudonym,
@@ -121,7 +129,7 @@ export default class GameRoom implements Party.Server {
   }
 
   private getScoreEntries(pointsThisRound: Record<string, number> = {}): ScoreEntry[] {
-    return Array.from(this.state.players.values())
+    return Array.from(this.game.players.values())
       .sort((a, b) => b.score - a.score)
       .map((p, i) => ({
         clientId: p.clientId,
@@ -134,28 +142,28 @@ export default class GameRoom implements Party.Server {
 
   // ─── Connection lifecycle ────────────────────────────────────────────────────
 
-  onConnect(conn: Party.Connection) {
+  onConnect(conn: Connection) {
     conn.send(JSON.stringify({
       type: "LOBBY_UPDATE",
       players: this.getPlayerInfos(),
-      hostClientId: this.state.hostClientId,
-      settings: this.state.settings,
+      hostClientId: this.game.hostClientId,
+      settings: this.game.settings,
     }));
   }
 
-  onClose(conn: Party.Connection) {
-    const clientId = this.state.connections.get(conn.id);
+  onClose(conn: Connection) {
+    const clientId = this.game.connections.get(conn.id);
     if (!clientId) return;
-    this.state.connections.delete(conn.id);
+    this.game.connections.delete(conn.id);
 
-    const player = this.state.players.get(clientId);
+    const player = this.game.players.get(clientId);
     if (!player) return;
 
     // Ignore the close event from a connection that has already been replaced
     // by a reconnect. The replacement remains the player's active connection.
     if (player.connectionId !== conn.id) return;
 
-    if (this.state.phase === "lobby") {
+    if (this.game.phase === "lobby") {
       // En lobby : retrait immédiat
       this.removePlayer(clientId);
     } else {
@@ -164,7 +172,7 @@ export default class GameRoom implements Party.Server {
       this.broadcastLobby();
 
       setTimeout(() => {
-        const p = this.state.players.get(clientId);
+        const p = this.game.players.get(clientId);
         if (p && !p.connectionId) {
           this.removePlayer(clientId);
         }
@@ -173,17 +181,17 @@ export default class GameRoom implements Party.Server {
   }
 
   private removePlayer(clientId: string) {
-    this.state.players.delete(clientId);
+    this.game.players.delete(clientId);
 
     // Si c'était l'hôte, passer le rôle à un joueur connecté aléatoire
-    if (this.state.hostClientId === clientId) {
-      const connected = Array.from(this.state.players.values()).filter((p) => p.connectionId);
+    if (this.game.hostClientId === clientId) {
+      const connected = Array.from(this.game.players.values()).filter((p) => p.connectionId);
       const next = connected[Math.floor(Math.random() * connected.length)];
-      this.state.hostClientId = next?.clientId ?? null;
+      this.game.hostClientId = next?.clientId ?? null;
     }
 
     // Plus personne → fermer le salon
-    if (this.state.players.size === 0) {
+    if (this.game.players.size === 0) {
       this.closeRoom();
       return;
     }
@@ -192,10 +200,10 @@ export default class GameRoom implements Party.Server {
   }
 
   private closeRoom() {
-    if (this.state.roundTimer) clearTimeout(this.state.roundTimer);
+    if (this.game.roundTimer) clearTimeout(this.game.roundTimer);
 
-    const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "http://localhost:3000";
-    fetch(`${baseUrl}/api/rooms/${this.room.id}/status`, {
+    const baseUrl = (this.env.NEXTJS_URL) ?? "http://localhost:3000";
+    fetch(`${baseUrl}/api/rooms/${this.name}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "finished" }),
@@ -204,7 +212,7 @@ export default class GameRoom implements Party.Server {
 
   // ─── Messages ────────────────────────────────────────────────────────────────
 
-  onMessage(raw: string | ArrayBuffer, conn: Party.Connection) {
+  onMessage(conn: Connection, raw: string | ArrayBuffer) {
     const msg = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw)) as ClientMessage;
 
     if (msg.type === "JOIN") {
@@ -212,33 +220,33 @@ export default class GameRoom implements Party.Server {
       return;
     }
 
-    const clientId = this.state.connections.get(conn.id);
+    const clientId = this.game.connections.get(conn.id);
     if (!clientId) return;
 
     switch (msg.type) {
       case "START_GAME":
-        if (clientId === this.state.hostClientId) this.handleStartGame();
+        if (clientId === this.game.hostClientId) this.handleStartGame();
         break;
       case "SUBMIT_ANSWER":
         this.handleAnswer(clientId, msg.option, msg.clientTimestamp);
         break;
       case "SET_SETTINGS":
-        if (clientId === this.state.hostClientId && this.state.phase === "lobby") {
-          this.state.settings = { ...this.state.settings, ...msg.settings };
+        if (clientId === this.game.hostClientId && this.game.phase === "lobby") {
+          this.game.settings = { ...this.game.settings, ...msg.settings };
           this.broadcastLobby();
         }
         break;
       case "KICK_PLAYER":
-        if (clientId === this.state.hostClientId && msg.clientId !== clientId) {
+        if (clientId === this.game.hostClientId && msg.clientId !== clientId) {
           this.kickPlayer(msg.clientId);
         }
         break;
       case "RESTART_GAME":
-        if (clientId === this.state.hostClientId) this.handleRestartGame();
+        if (clientId === this.game.hostClientId) this.handleRestartGame();
         break;
       case "NEXT_QUESTION":
-        if (clientId === this.state.hostClientId && this.state.phase === "reveal") {
-          if (this.state.refQueue.length > 0) {
+        if (clientId === this.game.hostClientId && this.game.phase === "reveal") {
+          if (this.game.refQueue.length > 0) {
             this.startNextRound();
           } else {
             this.endGame();
@@ -246,8 +254,8 @@ export default class GameRoom implements Party.Server {
         }
         break;
       case "PLAY_VIDEO":
-        if (clientId === this.state.hostClientId) {
-          this.broadcast({ type: "PLAY_VIDEO" });
+        if (clientId === this.game.hostClientId) {
+          this.broadcastMsg({ type: "PLAY_VIDEO" });
         }
         break;
     }
@@ -255,34 +263,34 @@ export default class GameRoom implements Party.Server {
 
   // ─── Game Logic ──────────────────────────────────────────────────────────────
 
-  private handleJoin(conn: Party.Connection, clientId: string, pseudonym: string, userId?: string) {
+  private handleJoin(conn: Connection, clientId: string, pseudonym: string, userId?: string) {
     // Reconnection
-    const existing = this.state.players.get(clientId);
+    const existing = this.game.players.get(clientId);
     if (existing) {
       if (existing.connectionId && existing.connectionId !== conn.id) {
-        this.state.connections.delete(existing.connectionId);
+        this.game.connections.delete(existing.connectionId);
       }
       existing.connectionId = conn.id;
-      this.state.connections.set(conn.id, clientId);
+      this.game.connections.set(conn.id, clientId);
       conn.send(JSON.stringify({
         type: "LOBBY_UPDATE",
         players: this.getPlayerInfos(),
-        hostClientId: this.state.hostClientId,
-        settings: this.state.settings,
+        hostClientId: this.game.hostClientId,
+        settings: this.game.settings,
       }));
-      if (this.state.phase === "question" && this.state.currentRef && this.state.currentOptions) {
+      if (this.game.phase === "question" && this.game.currentRef && this.game.currentOptions) {
         conn.send(JSON.stringify({
           type: "QUESTION_START",
           question: {
-            round: this.state.currentRound,
-            total: this.state.settings.totalRounds,
-            mediaUrl: this.state.currentRef.mediaUrl,
-            mediaType: this.state.currentRef.mediaType,
-            thumbnailUrl: this.state.currentRef.thumbnailUrl,
-            question: this.state.currentRef.question ?? "Quelle est cette référence ?",
-            options: this.state.currentOptions,
-            serverTimestamp: this.state.roundStartTime,
-            durationMs: this.state.settings.roundDurationMs,
+            round: this.game.currentRound,
+            total: this.game.settings.totalRounds,
+            mediaUrl: this.game.currentRef.mediaUrl,
+            mediaType: this.game.currentRef.mediaType,
+            thumbnailUrl: this.game.currentRef.thumbnailUrl,
+            question: this.game.currentRef.question ?? "Quelle est cette référence ?",
+            options: this.game.currentOptions,
+            serverTimestamp: this.game.roundStartTime,
+            durationMs: this.game.settings.roundDurationMs,
           },
         }));
       }
@@ -299,69 +307,69 @@ export default class GameRoom implements Party.Server {
       currentPoints: 0,
     };
 
-    this.state.players.set(clientId, player);
-    this.state.connections.set(conn.id, clientId);
+    this.game.players.set(clientId, player);
+    this.game.connections.set(conn.id, clientId);
 
     // First player = host
-    if (!this.state.hostClientId) {
-      this.state.hostClientId = clientId;
+    if (!this.game.hostClientId) {
+      this.game.hostClientId = clientId;
     }
 
     this.broadcastLobby();
 
     // If game is already running, send current question
-    if (this.state.phase === "question" && this.state.currentRef && this.state.currentOptions) {
+    if (this.game.phase === "question" && this.game.currentRef && this.game.currentOptions) {
       conn.send(JSON.stringify({
         type: "QUESTION_START",
         question: {
-          round: this.state.currentRound,
-          total: this.state.settings.totalRounds,
-          mediaUrl: this.state.currentRef.mediaUrl,
-          mediaType: this.state.currentRef.mediaType,
-          thumbnailUrl: this.state.currentRef.thumbnailUrl,
-          question: this.state.currentRef.question ?? "Quelle est cette référence ?",
-          options: this.state.currentOptions,
-          serverTimestamp: this.state.roundStartTime,
-          durationMs: this.state.settings.roundDurationMs,
+          round: this.game.currentRound,
+          total: this.game.settings.totalRounds,
+          mediaUrl: this.game.currentRef.mediaUrl,
+          mediaType: this.game.currentRef.mediaType,
+          thumbnailUrl: this.game.currentRef.thumbnailUrl,
+          question: this.game.currentRef.question ?? "Quelle est cette référence ?",
+          options: this.game.currentOptions,
+          serverTimestamp: this.game.roundStartTime,
+          durationMs: this.game.settings.roundDurationMs,
         },
       }));
     }
   }
 
   private kickPlayer(targetClientId: string) {
-    const player = this.state.players.get(targetClientId);
+    const player = this.game.players.get(targetClientId);
     if (!player) return;
     if (player.connectionId) {
-      this.send(player.connectionId, { type: "KICKED" });
+      this.sendTo(player.connectionId, { type: "KICKED" });
     }
-    this.state.players.delete(targetClientId);
+    this.game.players.delete(targetClientId);
     this.broadcastLobby();
   }
 
   private handleRestartGame() {
-    if (this.state.phase !== "finished") return;
+    if (this.game.phase !== "finished") return;
 
-    if (this.state.roundTimer) clearTimeout(this.state.roundTimer);
+    if (this.game.roundTimer) clearTimeout(this.game.roundTimer);
 
     // Reset all scores and per-round state
-    for (const player of this.state.players.values()) {
+    for (const player of this.game.players.values()) {
       player.score = 0;
       player.currentAnswer = null;
       player.currentPoints = 0;
     }
 
-    this.state.phase = "lobby";
-    this.state.refQueue = [];
-    this.state.currentRef = null;
-    this.state.currentOptions = null;
-    this.state.correctOption = null;
-    this.state.currentRound = 0;
-    this.state.correctAnswerRank = 0;
-    this.state.roundRecords = [];
-    this.state.roundTimer = null;
+    this.game.phase = "lobby";
+    this.game.refQueue = [];
+    this.game.currentRef = null;
+    this.game.currentOptions = null;
+    this.game.correctOption = null;
+    this.game.currentRound = 0;
+    this.game.correctAnswerRank = 0;
+    this.game.roundRecords = [];
+    this.game.roundTimer = null;
 
-    const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "http://localhost:3000";
-    fetch(`${baseUrl}/api/rooms/${this.room.id}/status`, {
+    const baseUrl = (this.env.NEXTJS_URL) ?? "http://localhost:3000";
+    fetch(`${baseUrl}/api/rooms/${this.name}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "waiting" }),
@@ -371,26 +379,26 @@ export default class GameRoom implements Party.Server {
   }
 
   private async handleStartGame() {
-    if (this.state.phase !== "lobby") return;
-    if (this.state.players.size < 1) return;
+    if (this.game.phase !== "lobby") return;
+    if (this.game.players.size < 1) return;
 
     try {
-      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "https://quialaref.fr";
-      const limit = this.state.settings.totalRounds;
+      const baseUrl = (this.env.NEXTJS_URL) ?? "https://quialaref.fr";
+      const limit = this.game.settings.totalRounds;
       const res = await fetch(`${baseUrl}/api/refs?limit=${limit}`);
       const data = (await res.json()) as RefData[];
 
       if (!data || data.length === 0) {
-        this.broadcast({ type: "ERROR", message: "Pas assez de références approuvées pour jouer !" });
+        this.broadcastMsg({ type: "ERROR", message: "Pas assez de références approuvées pour jouer !" });
         return;
       }
 
-      this.state.refQueue = data;
-      this.state.settings.totalRounds = data.length;
-      this.state.currentRound = 0;
-      this.state.roundRecords = [];
+      this.game.refQueue = data;
+      this.game.settings.totalRounds = data.length;
+      this.game.currentRound = 0;
+      this.game.roundRecords = [];
 
-      fetch(`${baseUrl}/api/rooms/${this.room.id}/status`, {
+      fetch(`${baseUrl}/api/rooms/${this.name}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "playing" }),
@@ -399,24 +407,24 @@ export default class GameRoom implements Party.Server {
       await this.startNextRound();
     } catch (err) {
       console.error("[PartyKit] handleStartGame error:", err);
-      this.broadcast({ type: "ERROR", message: "Erreur lors du chargement des références" });
+      this.broadcastMsg({ type: "ERROR", message: "Erreur lors du chargement des références" });
     }
   }
 
   private async startNextRound() {
-    const ref = this.state.refQueue.shift();
+    const ref = this.game.refQueue.shift();
     if (!ref) {
       await this.endGame();
       return;
     }
 
-    this.state.phase = "question";
-    this.state.currentRound++;
-    this.state.currentRef = ref;
+    this.game.phase = "question";
+    this.game.currentRound++;
+    this.game.currentRef = ref;
 
     // Reset per-round state
-    this.state.correctAnswerRank = 0;
-    for (const player of this.state.players.values()) {
+    this.game.correctAnswerRank = 0;
+    for (const player of this.game.players.values()) {
       player.currentAnswer = null;
       player.currentPoints = 0;
     }
@@ -426,13 +434,13 @@ export default class GameRoom implements Party.Server {
     const falseProps = ref.propositions.map((p) => p.text);
     const { options, correctOption } = buildQuestionOptions(correctAnswer, falseProps);
 
-    this.state.currentOptions = options;
-    this.state.correctOption = correctOption;
-    this.state.roundStartTime = Date.now();
+    this.game.currentOptions = options;
+    this.game.correctOption = correctOption;
+    this.game.roundStartTime = Date.now();
 
-    this.state.roundRecords.push({
+    this.game.roundRecords.push({
       refId: ref.id,
-      roundNumber: this.state.currentRound,
+      roundNumber: this.game.currentRound,
       optionA: options.a,
       optionB: options.b,
       optionC: options.c,
@@ -440,43 +448,43 @@ export default class GameRoom implements Party.Server {
       correctOption,
     });
 
-    this.broadcast({
+    this.broadcastMsg({
       type: "QUESTION_START",
       question: {
-        round: this.state.currentRound,
-        total: this.state.settings.totalRounds,
+        round: this.game.currentRound,
+        total: this.game.settings.totalRounds,
         mediaUrl: ref.mediaUrl,
         mediaType: ref.mediaType,
         thumbnailUrl: ref.thumbnailUrl ?? undefined,
         question,
         options,
-        serverTimestamp: this.state.roundStartTime,
-        durationMs: this.state.settings.roundDurationMs,
+        serverTimestamp: this.game.roundStartTime,
+        durationMs: this.game.settings.roundDurationMs,
         youtubeUrl: ref.youtubeUrl ?? null,
       },
     });
 
-    if (this.state.roundTimer) clearTimeout(this.state.roundTimer);
-    this.state.roundTimer = setTimeout(() => {
+    if (this.game.roundTimer) clearTimeout(this.game.roundTimer);
+    this.game.roundTimer = setTimeout(() => {
       this.revealAnswer();
-    }, this.state.settings.roundDurationMs);
+    }, this.game.settings.roundDurationMs);
   }
 
   private handleAnswer(clientId: string, option: "a" | "b" | "c" | "d", clientTimestamp: number) {
-    if (this.state.phase !== "question") return;
-    const player = this.state.players.get(clientId);
+    if (this.game.phase !== "question") return;
+    const player = this.game.players.get(clientId);
     if (!player) return;
 
     const wasAnswered = player.currentAnswer !== null;
-    const wasCorrectBefore = wasAnswered && player.currentAnswer === this.state.correctOption;
+    const wasCorrectBefore = wasAnswered && player.currentAnswer === this.game.correctOption;
     player.currentAnswer = option;
 
-    const isCorrect = option === this.state.correctOption;
+    const isCorrect = option === this.game.correctOption;
 
     // Assign rank only when player answers correctly for the first time
     if (isCorrect && !wasCorrectBefore) {
-      this.state.correctAnswerRank++;
-      player.currentPoints = calculatePoints(this.state.correctAnswerRank, true);
+      this.game.correctAnswerRank++;
+      player.currentPoints = calculatePoints(this.game.correctAnswerRank, true);
     } else if (!isCorrect) {
       player.currentPoints = 0;
     }
@@ -484,52 +492,52 @@ export default class GameRoom implements Party.Server {
 
     // Confirm to player
     if (player.connectionId) {
-      this.send(player.connectionId, { type: "ANSWER_CONFIRMED", option });
+      this.sendTo(player.connectionId, { type: "ANSWER_CONFIRMED", option });
     }
 
     // Only broadcast "answered" event on first answer (not on change)
     if (!wasAnswered) {
-      const answeredCount = Array.from(this.state.players.values()).filter((p) => p.currentAnswer !== null).length;
-      this.broadcast({ type: "PLAYER_ANSWERED", clientId, answeredCount, totalPlayers: this.state.players.size });
+      const answeredCount = Array.from(this.game.players.values()).filter((p) => p.currentAnswer !== null).length;
+      this.broadcastMsg({ type: "PLAYER_ANSWERED", clientId, answeredCount, totalPlayers: this.game.players.size });
 
       // If everyone answered, reveal immediately
-      if (answeredCount === this.state.players.size) {
-        if (this.state.roundTimer) clearTimeout(this.state.roundTimer);
+      if (answeredCount === this.game.players.size) {
+        if (this.game.roundTimer) clearTimeout(this.game.roundTimer);
         this.revealAnswer();
       }
     }
   }
 
   private revealAnswer() {
-    if (this.state.phase !== "question") return;
-    this.state.phase = "reveal";
+    if (this.game.phase !== "question") return;
+    this.game.phase = "reveal";
 
-    if (this.state.roundTimer) {
-      clearTimeout(this.state.roundTimer);
-      this.state.roundTimer = null;
+    if (this.game.roundTimer) {
+      clearTimeout(this.game.roundTimer);
+      this.game.roundTimer = null;
     }
 
     // Apply points to scores
     const pointsThisRound: Record<string, number> = {};
-    for (const player of this.state.players.values()) {
+    for (const player of this.game.players.values()) {
       player.score += player.currentPoints;
       pointsThisRound[player.clientId] = player.currentPoints;
     }
 
     const scores = this.getScoreEntries(pointsThisRound);
     const reveal: RevealPayload = {
-      correctOption: this.state.correctOption!,
-      correctText: this.state.currentOptions![this.state.correctOption!],
-      submittedBy: this.state.currentRef?.submittedByUsername ?? null,
+      correctOption: this.game.correctOption!,
+      correctText: this.game.currentOptions![this.game.correctOption!],
+      submittedBy: this.game.currentRef?.submittedByUsername ?? null,
       scores,
       pointsThisRound,
     };
 
-    this.broadcast({ type: "ROUND_REVEAL", reveal });
+    this.broadcastMsg({ type: "ROUND_REVEAL", reveal });
 
-    if (this.state.settings.autoChange) {
+    if (this.game.settings.autoChange) {
       setTimeout(() => {
-        if (this.state.refQueue.length > 0) {
+        if (this.game.refQueue.length > 0) {
           this.startNextRound();
         } else {
           this.endGame();
@@ -539,37 +547,44 @@ export default class GameRoom implements Party.Server {
   }
 
   private async endGame() {
-    this.state.phase = "finished";
+    this.game.phase = "finished";
     const finalScores = this.getScoreEntries();
-    this.broadcast({ type: "GAME_OVER", finalScores });
+    this.broadcastMsg({ type: "GAME_OVER", finalScores });
 
     try {
-      const baseUrl = (this.room.env.NEXTJS_URL as string) ?? "https://quialaref.fr";
-      const players = Array.from(this.state.players.values()).map((p) => ({
+      const baseUrl = (this.env.NEXTJS_URL) ?? "https://quialaref.fr";
+      const players = Array.from(this.game.players.values()).map((p) => ({
         pseudonym: p.pseudonym,
         userId: p.userId,
         score: p.score,
         rank: finalScores.find((s) => s.clientId === p.clientId)?.rank ?? 1,
       }));
-      await fetch(`${baseUrl}/api/rooms/${this.room.id}/results`, {
+      await fetch(`${baseUrl}/api/rooms/${this.name}/results`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ players, rounds: this.state.roundRecords }),
+        body: JSON.stringify({ players, rounds: this.game.roundRecords }),
       });
     } catch {}
   }
 
-  async onRequest(req: Party.Request): Promise<Response> {
+  async onRequest(req: Request): Promise<Response> {
     if (req.method === "GET") {
-      return Response.json({ phase: this.state.phase, playerCount: this.state.players.size });
+      return Response.json({ phase: this.game.phase, playerCount: this.game.players.size });
     }
     if (req.method === "POST") {
       const body = (await req.json()) as { roomId?: string };
-      if (body.roomId) this.state.roomId = body.roomId;
+      if (body.roomId) this.game.roomId = body.roomId;
       return Response.json({ ok: true });
     }
     return new Response("Method not allowed", { status: 405 });
   }
 }
 
-GameRoom satisfies Party.Worker;
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return (
+      (await routePartykitRequest(request, env, { cors: true })) ||
+      new Response("Not Found", { status: 404 })
+    );
+  },
+} satisfies ExportedHandler<Env>;

@@ -10,7 +10,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "party:dev": "wrangler dev --port 1999",
+    "party:deploy": "wrangler deploy",
+    "party:typecheck": "tsc -p party/tsconfig.json"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.4",
@@ -29,7 +32,7 @@
     "next": "^15.1.0",
     "next-auth": "^5.0.0-beta.28",
     "next-themes": "^0.4.6",
-    "partykit": "^0.0.109",
+    "partyserver": "^0.5.10",
     "partysocket": "^1.0.2",
     "postgres": "^3.4.8",
     "react": "^19.0.0",
@@ -40,6 +43,7 @@
     "youtube-transcript": "^1.3.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261124.1",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
@@ -51,6 +55,7 @@
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.168.0"
   }
 }
